@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bristle Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #15141b;
+    --panel: rgba(20, 19, 26, 0.80);
+    --panel-solid: #191821;
+    --line: rgba(239, 230, 212, 0.16);
+    --line-strong: rgba(239, 230, 212, 0.34);
+    --bone: #efe6d4;
+    --bone-dim: #a79e8e;
+    --rust: #d8503c;
+    --brass: #e0a53f;
+    --sage: #8aa06b;
+    --sand: #d8c29a;
+    --display: "Chakra Petch", "Trebuchet MS", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--bone);
+    font-family: var(--mono);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #app { position: fixed; inset: 0; overflow: hidden; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: absolute; pointer-events: none; z-index: 2; }
+
+  /* ---- top bar: scrap + run clock ------------------------------------ */
+  .hud-top {
+    top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  }
+  .plate {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--rust);
+    padding: 7px 14px 8px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .plate.clock { border-left-color: var(--brass); text-align: right; }
+  .label {
+    display: block;
+    font-family: var(--display);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+  .value {
+    display: block;
+    font-family: var(--mono); font-weight: 600;
+    font-size: 26px; line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .value.warn { color: var(--rust); }
+  .combo {
+    font-family: var(--display); font-weight: 700;
+    font-size: 12px; letter-spacing: 0.1em;
+    color: var(--brass);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .combo.on { opacity: 1; }
+
+  /* ---- instrument stack ---------------------------------------------- */
+  .hud-gauges {
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: 190px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 12px 14px 13px;
+    display: grid; gap: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .row .num {
+    font-weight: 600; font-size: 17px;
+    font-variant-numeric: tabular-nums;
+  }
+  .row .unit { font-size: 10px; color: var(--bone-dim); }
+  .bar {
+    height: 6px; background: rgba(239, 230, 212, 0.12);
+    border: 1px solid var(--line); position: relative; overflow: hidden;
+  }
+  .bar > i {
+    display: block; height: 100%; width: 0%;
+    background: var(--sage); transition: background 0.2s;
+  }
+  .bar.hot > i { background: var(--rust); }
+
+  /* ---- key legend ----------------------------------------------------- */
+  .hud-keys {
+    left: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    display: grid; gap: 5px;
+    font-size: 11px; color: var(--bone-dim);
+  }
+  .hud-keys div { display: flex; gap: 8px; align-items: center; }
+  kbd {
+    font-family: var(--mono); font-size: 10px; font-weight: 500;
+    background: var(--panel); border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    padding: 2px 6px; color: var(--bone);
+  }
+
+  /* ---- touch controls -------------------------------------------------- */
+  .touch {
+    position: absolute; inset: auto 0 0 0; z-index: 3;
+    display: none;
+    justify-content: space-between; align-items: flex-end;
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+  }
+  .pad { display: flex; gap: 10px; }
+  .btn {
+    width: 62px; height: 62px;
+    display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--line-strong);
+    color: var(--bone);
+    font-family: var(--display); font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em;
+    user-select: none; touch-action: none;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .btn.fire { border-color: var(--rust); color: var(--rust); width: 76px; }
+  .btn:active, .btn.down { background: rgba(216, 80, 60, 0.35); color: var(--bone); }
+  body.touch-mode .touch { display: flex; }
+  body.touch-mode .hud-keys { display: none; }
+  body.touch-mode .hud-gauges { width: 150px; bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ---- overlays --------------------------------------------------------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 4;
+    display: grid; place-items: center;
+    padding: 16px;
+    background: rgba(12, 11, 16, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .card {
+    width: min(460px, 100%);
+    background: var(--panel-solid);
+    border: 1px solid var(--line-strong);
+    border-top: 4px solid var(--rust);
+    padding: 26px 26px 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  }
+  .eyebrow {
+    font-family: var(--display); font-weight: 700;
+    font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--brass);
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(30px, 8vw, 42px);
+    line-height: 1.02; margin: 8px 0 10px;
+    letter-spacing: -0.01em; text-wrap: balance;
+  }
+  .card p {
+    margin: 0 0 16px;
+    font-size: 13px; line-height: 1.65;
+    color: var(--bone-dim);
+    max-width: 46ch;
+  }
+  .specs {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px; background: var(--line);
+    border: 1px solid var(--line); margin-bottom: 18px;
+  }
+  .spec { background: var(--panel-solid); padding: 9px 12px; }
+  .spec b {
+    display: block; font-family: var(--mono); font-weight: 600;
+    font-size: 15px; font-variant-numeric: tabular-nums;
+  }
+  .go {
+    width: 100%;
+    font-family: var(--display); font-weight: 700;
+    font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); background: var(--brass);
+    border: 0; padding: 14px; cursor: pointer;
+  }
+  .go:hover { background: var(--bone); }
+  .go:focus-visible { outline: 3px solid var(--rust); outline-offset: 2px; }
+  .fineprint { margin: 12px 0 0; font-size: 11px; color: var(--bone-dim); }
+  .scoreline {
+    display: flex; align-items: baseline; gap: 12px;
+    font-variant-numeric: tabular-nums; margin-bottom: 16px;
+  }
+  .scoreline .big { font-size: 44px; font-weight: 600; line-height: 1; }
+  .scoreline .sub { font-size: 12px; color: var(--bone-dim); }
+
+  /* don't depend on the host reset to beat display:grid */
+  .overlay[hidden], .loading[hidden] { display: none !important; }
+
+  .loading {
+    position: absolute; inset: 0; z-index: 5;
+    display: grid; place-items: center;
+    background: var(--ink);
+    font-family: var(--display); font-weight: 600;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--bone-dim);
+  }
+
+  @media (max-width: 520px) {
+    .hud-keys { display: none; }
+    .touch { display: flex; }
+    .hud-gauges { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); width: 150px; }
+  }
+  @media (max-width: 460px) {
+    .value { font-size: 20px; }
+    .hud-gauges { width: 140px; padding: 9px 10px 10px; }
+    .row .num { font-size: 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .combo { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+
+  <header class="hud hud-top">
+    <div class="plate">
+      <span class="label">Scrap</span>
+      <span class="value" id="score">0</span>
+      <span class="combo" id="combo">&times;2 chain</span>
+    </div>
+    <div class="plate clock">
+      <span class="label">Run time</span>
+      <span class="value" id="clock">1:30</span>
+    </div>
+  </header>
+
+  <div class="hud hud-gauges">
+    <div class="row">
+      <span class="label">Speed</span>
+      <span><span class="num" id="kmh">0</span> <span class="unit">km/h</span></span>
+    </div>
+    <div class="row">
+      <span class="label">Wheel</span>
+      <span><span class="num" id="rpm">0</span> <span class="unit">rpm</span></span>
+    </div>
+    <div>
+      <div class="row"><span class="label">Twin 20mm heat</span></div>
+      <div class="bar" id="heatBar"><i id="heatFill"></i></div>
+    </div>
+  </div>
+
+  <footer class="hud hud-keys">
+    <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive</div>
+    <div><kbd>Space</kbd> fire sponson cannons</div>
+    <div><kbd>R</kbd> restart run</div>
+  </footer>
+
+  <div class="touch" id="touch">
+    <div class="pad">
+      <div class="btn" data-key="left">&#9664;</div>
+      <div class="btn" data-key="right">&#9654;</div>
+    </div>
+    <div class="pad">
+      <div class="btn" data-key="back">REV</div>
+      <div class="btn fire" data-key="fire">FIRE</div>
+      <div class="btn" data-key="fwd">GO</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="startCard">
+    <div class="card">
+      <span class="eyebrow">Quill-class assault buggy</span>
+      <h1>Bristle Runner</h1>
+      <p>
+        Eleven scrap drones are drifting over the flats. Your hedgehog runs four
+        treaded wheels and a pair of forward-firing sponson cannons bolted to the
+        rear deck &mdash; get the nose around and put them down before the clock runs out.
+      </p>
+      <div class="specs">
+        <div class="spec"><span class="label">Drive</span><b>4 &times; treaded</b></div>
+        <div class="spec"><span class="label">Armament</span><b>2 &times; 20mm</b></div>
+        <div class="spec"><span class="label">Quill array</span><b>68 spines</b></div>
+        <div class="spec"><span class="label">Run length</span><b>90 s</b></div>
+      </div>
+      <button class="go" id="startBtn">Start the run</button>
+      <p class="fineprint" id="bestLine">Cannons overheat if you hold the trigger &mdash; let them cool.</p>
+    </div>
+  </div>
+
+  <div class="overlay" id="endCard" hidden>
+    <div class="card">
+      <span class="eyebrow">Run complete</span>
+      <h1 id="endTitle">Clock out</h1>
+      <div class="scoreline">
+        <span class="big" id="endScore">0</span>
+        <span class="sub" id="endDetail">scrap recovered</span>
+      </div>
+      <button class="go" id="againBtn">Run it again</button>
+      <p class="fineprint" id="endBest"></p>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">Loading chassis&hellip;</div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $ = (id) => document.getElementById(id);
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ------------------------------------------------------------------ world */
+const SKY_TOP = new THREE.Color('#4d6a86');
+const SKY_LOW = new THREE.Color('#c9b28c');
+const SAND = new THREE.Color('#d2b384');
+const SAND_DK = new THREE.Color('#a98a60');
+const ARENA = 118;
+
+// gentle dune field - the same function drives the mesh and the buggy's stance
+function ground(x, z) {
+  return 0.55 * Math.sin(x * 0.031) * Math.cos(z * 0.027)
+       + 0.30 * Math.sin(x * 0.075 + 1.3) * Math.sin(z * 0.066)
+       + 0.14 * Math.sin(x * 0.19 + 2.1) * Math.cos(z * 0.17);
+}
+
+const renderer = new THREE.WebGLRenderer({
+  canvas: $('view'), antialias: true, powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(new THREE.Color('#b9ad94'), 70, 285);
+
+const camera = new THREE.PerspectiveCamera(52, 1, 0.5, 900);
+scene.add(camera);
+
+// low-poly gradient sky
+{
+  const g = new THREE.SphereGeometry(420, 18, 12);
+  const col = [];
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const t = THREE.MathUtils.clamp(p.getY(i) / 420 * 1.6 + 0.35, 0, 1);
+    const c = SKY_LOW.clone().lerp(SKY_TOP, t);
+    col.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.BackSide, fog: false,
+  })));
+}
+
+scene.add(new THREE.HemisphereLight(0xbcd4ea, 0x6b5233, 0.85));
+const sun = new THREE.DirectionalLight(0xfff0d6, 1.35);
+sun.position.set(-48, 64, 38);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 10;
+sun.shadow.camera.far = 190;
+const SH = 34;
+Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
+sun.shadow.bias = -0.0016;
+sun.shadow.normalBias = 0.03;
+sun.shadow.camera.updateProjectionMatrix();
+scene.add(sun, sun.target);
+
+// terrain
+{
+  const g = new THREE.PlaneGeometry(620, 620, 150, 150);
+  g.rotateX(-Math.PI / 2);
+  const p = g.attributes.position;
+  const col = [];
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i);
+    p.setY(i, ground(x, z));
+    const t = THREE.MathUtils.clamp(0.5 + ground(x, z) * 0.45, 0, 1);
+    const c = SAND_DK.clone().lerp(SAND, t).multiplyScalar(0.94 + Math.random() * 0.12);
+    col.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({
+    vertexColors: true, flatShading: true,
+  }));
+  m.receiveShadow = true;
+  scene.add(m);
+}
+
+/* ------------------------------------------------------------- scenery */
+const obstacles = [];
+function scatter() {
+  const rockMat = new THREE.MeshLambertMaterial({ color: 0x6d6257, flatShading: true });
+  const rockGeo = new THREE.IcosahedronGeometry(1, 0);
+  for (let i = 0; i < 90; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 22 + Math.pow(Math.random(), 0.7) * (ARENA + 46);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const s = 0.8 + Math.random() * 2.6;
+    const m = new THREE.Mesh(rockGeo, rockMat);
+    m.position.set(x, ground(x, z) + s * 0.35, z);
+    m.scale.set(s * (0.8 + Math.random() * 0.5), s * (0.5 + Math.random() * 0.6), s);
+    m.rotation.set(Math.random(), Math.random() * 6.28, Math.random());
+    m.castShadow = true; m.receiveShadow = true;
+    scene.add(m);
+    if (r < ARENA + 10) obstacles.push({ x, z, r: s * 0.95 });
+  }
+  // sparse cacti for a bit of living colour
+  const cactusMat = new THREE.MeshLambertMaterial({ color: 0x6f8850, flatShading: true });
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 26 + Math.random() * (ARENA + 20);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const h = 2.4 + Math.random() * 2.6;
+    const grp = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, h, 7), cactusMat);
+    trunk.position.y = h / 2;
+    trunk.castShadow = true;
+    grp.add(trunk);
+    for (const sx of [-1, 1]) {
+      if (Math.random() < 0.45) continue;
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, h * 0.5, 6), cactusMat);
+      arm.position.set(sx * 0.6, h * 0.62, 0);
+      arm.rotation.z = -sx * 0.5;
+      arm.castShadow = true;
+      grp.add(arm);
+    }
+    grp.position.set(x, ground(x, z), z);
+    grp.rotation.y = Math.random() * 6.28;
+    scene.add(grp);
+    obstacles.push({ x, z, r: 0.75 });
+  }
+}
+scatter();
+
+/* ------------------------------------------------- the buggy (from buggy.json) */
+const buggy = new THREE.Group();
+const chassis = new THREE.Group();     // leans under acceleration and cornering
+const running = new THREE.Group();     // wheels stay planted
+buggy.add(chassis, running);
+scene.add(buggy);
+
+const wheels = [];
+let MUZZLES = [[1.44, 1.75, 1.78], [-1.44, 1.75, 1.78]];
+let AIM = new THREE.Vector3(0, 0.061, 0.998);
+
+function partToMesh(part, palette) {
+  const { pos, idx, mat, jit } = part;
+  const n = idx.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  const c = new THREE.Color();
+  for (let f = 0; f < n / 3; f++) {
+    c.set(palette[mat[f]]).multiplyScalar(jit[f]);
+    for (let k = 0; k < 3; k++) {
+      const v = idx[f * 3 + k] * 3, o = (f * 3 + k) * 3;
+      positions[o] = pos[v]; positions[o + 1] = pos[v + 1]; positions[o + 2] = pos[v + 2];
+      colors[o] = c.r; colors[o + 1] = c.g; colors[o + 2] = c.b;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+async function loadBuggy() {
+  const data = await fetch('buggy.json').then((r) => {
+    if (!r.ok) throw new Error('geometry ' + r.status);
+    return r.json();
+  });
+  MUZZLES = data.muzzles;
+  AIM = new THREE.Vector3().fromArray(data.aim).normalize();
+  for (const part of data.parts) {
+    const mesh = partToMesh(part, data.palette);
+    if (part.name === 'body') {
+      chassis.add(mesh);
+    } else {
+      // pivot group carries the steering yaw, the mesh inside carries the spin
+      const pivot = new THREE.Group();
+      pivot.position.fromArray(part.pivot);
+      pivot.add(mesh);
+      running.add(pivot);
+      wheels.push({
+        pivot, mesh, radius: part.radius,
+        front: part.name.startsWith('wheel_f'),
+      });
+    }
+  }
+}
+
+/* --------------------------------------------------------------- drones */
+const droneGeo = new THREE.OctahedronGeometry(1.15, 0);
+const ringGeo = new THREE.TorusGeometry(1.5, 0.12, 4, 10);
+const droneMat = new THREE.MeshLambertMaterial({ color: 0xcf5a3c, flatShading: true, emissive: 0x2a0d06 });
+const ringMat = new THREE.MeshLambertMaterial({ color: 0x53586a, flatShading: true });
+const drones = [];
+
+function placeDrone(d) {
+  const a = Math.random() * Math.PI * 2;
+  const r = 26 + Math.random() * (ARENA - 34);
+  d.home.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+  d.phase = Math.random() * 6.28;
+  d.spin = (Math.random() > 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.7);
+  d.alive = true;
+  d.group.visible = true;
+}
+
+for (let i = 0; i < 11; i++) {
+  const group = new THREE.Group();
+  const core = new THREE.Mesh(droneGeo, droneMat);
+  core.castShadow = true;
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  group.add(core, ring);
+  scene.add(group);
+  const d = { group, core, ring, home: new THREE.Vector3(), phase: 0, spin: 1, alive: true };
+  placeDrone(d);
+  drones.push(d);
+}
+
+/* ------------------------------------------------------------ projectiles */
+const shellGeo = new THREE.BoxGeometry(0.13, 0.13, 1.5);
+const shellMat = new THREE.MeshBasicMaterial({ color: 0xffd98a });
+const shells = [];
+for (let i = 0; i < 40; i++) {
+  const m = new THREE.Mesh(shellGeo, shellMat);
+  m.visible = false;
+  scene.add(m);
+  shells.push({ mesh: m, life: 0, vel: new THREE.Vector3() });
+}
+
+const flashGeo = new THREE.ConeGeometry(0.45, 1.1, 6);
+const flashMat = new THREE.MeshBasicMaterial({ color: 0xffe2a0, transparent: true });
+const flashes = MUZZLES.map(() => {
+  const m = new THREE.Mesh(flashGeo, flashMat.clone());
+  m.rotation.x = Math.PI / 2;
+  m.visible = false;
+  buggy.add(m);
+  return { mesh: m, life: 0 };
+});
+
+const shardGeo = new THREE.TetrahedronGeometry(0.42, 0);
+const shardMat = new THREE.MeshLambertMaterial({ color: 0xd8503c, flatShading: true });
+const shards = [];
+for (let i = 0; i < 60; i++) {
+  const m = new THREE.Mesh(shardGeo, shardMat);
+  m.visible = false;
+  scene.add(m);
+  shards.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+}
+
+/* -------------------------------------------------------------- controls */
+const keys = Object.create(null);
+const touch = { left: 0, right: 0, fwd: 0, back: 0, fire: 0 };
+
+addEventListener('keydown', (e) => {
+  if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.toLowerCase() === 'r' && state.phase !== 'idle') startRun();
+  if (state.phase === 'idle' && (e.key === ' ' || e.key === 'Enter')) startRun();
+});
+addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch-mode');
+for (const btn of document.querySelectorAll('.btn')) {
+  const k = btn.dataset.key;
+  const set = (v) => (e) => {
+    e.preventDefault();
+    touch[k] = v;
+    btn.classList.toggle('down', !!v);
+  };
+  btn.addEventListener('pointerdown', set(1));
+  btn.addEventListener('pointerup', set(0));
+  btn.addEventListener('pointercancel', set(0));
+  btn.addEventListener('pointerleave', set(0));
+}
+
+const input = () => ({
+  throttle: (keys.w || keys.arrowup || touch.fwd ? 1 : 0) - (keys.s || keys.arrowdown || touch.back ? 1 : 0),
+  steer: (keys.a || keys.arrowleft || touch.left ? 1 : 0) - (keys.d || keys.arrowright || touch.right ? 1 : 0),
+  fire: !!(keys[' '] || touch.fire),
+});
+
+/* ----------------------------------------------------------------- state */
+const RUN_SECONDS = 90;
+const MAXV = 26, WHEELBASE = 2.6, TRACK = 2.0;
+
+const state = {
+  phase: 'idle',          // idle | running | over
+  t: RUN_SECONDS,
+  score: 0,
+  kills: 0,
+  chain: 0,
+  chainTimer: 0,
+  speed: 0,
+  heading: 0,
+  steer: 0,
+  heat: 0,
+  overheated: false,
+  cool: 0,
+  shotClock: 0,
+  barrel: 0,
+  shake: 0,
+  best: 0,
+};
+
+try { state.best = Number(localStorage.getItem('bristle-best') || 0) || 0; } catch (e) { /* private mode */ }
+
+const pos = new THREE.Vector3(0, 0, -18);
+const camPos = new THREE.Vector3(0, 8, -34);
+const camAim = new THREE.Vector3();
+
+function startRun() {
+  state.phase = 'running';
+  state.t = RUN_SECONDS;
+  state.score = 0; state.kills = 0; state.chain = 0; state.chainTimer = 0;
+  state.speed = 0; state.heading = 0; state.steer = 0;
+  state.heat = 0; state.overheated = false;
+  pos.set(0, 0, -18);
+  for (const d of drones) placeDrone(d);
+  for (const s of shells) { s.life = 0; s.mesh.visible = false; }
+  $('startCard').hidden = true;
+  $('endCard').hidden = true;
+}
+
+function endRun() {
+  state.phase = 'over';
+  const killed = state.kills;
+  $('endScore').textContent = state.score;
+  $('endDetail').textContent = 'scrap recovered \u00b7 ' + killed + ' drone' + (killed === 1 ? '' : 's') + ' down';
+  $('endTitle').textContent = state.score > state.best ? 'New best run' : 'Clock out';
+  if (state.score > state.best) {
+    state.best = state.score;
+    try { localStorage.setItem('bristle-best', String(state.best)); } catch (e) { /* ignore */ }
+  }
+  $('endBest').textContent = 'Best run: ' + state.best + ' scrap';
+  $('endCard').hidden = false;
+}
+
+$('startBtn').addEventListener('click', startRun);
+$('againBtn').addEventListener('click', startRun);
+if (state.best > 0) $('bestLine').textContent = 'Best run so far: ' + state.best + ' scrap. Cannons overheat if you hold the trigger.';
+
+/* ------------------------------------------------------------------ fire */
+const worldMuzzle = new THREE.Vector3();
+const forward = new THREE.Vector3();
+
+function fire() {
+  const shell = shells.find((s) => s.life <= 0);
+  if (!shell) return;
+  const side = state.barrel;
+  state.barrel = 1 - state.barrel;
+
+  const m = MUZZLES[side];
+  worldMuzzle.set(m[0], m[1], m[2]).applyMatrix4(buggy.matrixWorld);
+  forward.copy(AIM).applyEuler(new THREE.Euler(0, state.heading, 0)).normalize();
+
+  shell.mesh.position.copy(worldMuzzle);
+  shell.mesh.lookAt(worldMuzzle.clone().add(forward));
+  shell.vel.copy(forward).multiplyScalar(86).addScaledVector(forward, state.speed * 0.4);
+  shell.life = 1.5;
+  shell.mesh.visible = true;
+
+  const fl = flashes[side];
+  fl.mesh.position.set(m[0], m[1], m[2]);
+  fl.life = 0.07;
+  fl.mesh.visible = true;
+
+  state.heat = Math.min(1, state.heat + 0.085);
+  if (state.heat >= 1) { state.overheated = true; state.cool = 1.6; }
+  state.shake = Math.min(0.5, state.shake + 0.14);
+}
+
+function burst(at) {
+  let used = 0;
+  for (const s of shards) {
+    if (s.life > 0 || used >= 9) continue;
+    used++;
+    s.mesh.position.copy(at);
+    s.vel.set(Math.random() - 0.5, Math.random() * 0.9 + 0.2, Math.random() - 0.5)
+      .normalize().multiplyScalar(6 + Math.random() * 7);
+    s.spin.set(Math.random() * 8, Math.random() * 8, Math.random() * 8);
+    s.life = 1.1;
+    s.mesh.visible = true;
+    s.mesh.scale.setScalar(0.6 + Math.random() * 0.8);
+  }
+}
+
+/* ------------------------------------------------------------------ loop */
+const clock = new THREE.Clock();
+const tmp = new THREE.Vector3();
+let spinAngle = 0;
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+function step(dt) {
+  const inp = state.phase === 'running' ? input() : { throttle: 0, steer: 0, fire: false };
+
+  /* --- drive ------------------------------------------------------- */
+  if (inp.throttle > 0) state.speed += 17 * dt;
+  else if (inp.throttle < 0) state.speed -= (state.speed > 0 ? 30 : 13) * dt;
+  state.speed -= state.speed * (inp.throttle === 0 ? 1.15 : 0.35) * dt;
+  state.speed = THREE.MathUtils.clamp(state.speed, -10, MAXV);
+  if (Math.abs(state.speed) < 0.02) state.speed = 0;
+
+  // steering lock tightens as the buggy gains speed
+  const lock = 0.58 - 0.44 * Math.min(1, Math.abs(state.speed) / MAXV);
+  const target = inp.steer * lock;
+  state.steer += (target - state.steer) * Math.min(1, 9 * dt);
+
+  const yawRate = (state.speed / WHEELBASE) * Math.tan(state.steer);
+  state.heading += yawRate * dt;
+
+  const dir = new THREE.Vector3(Math.sin(state.heading), 0, Math.cos(state.heading));
+  pos.addScaledVector(dir, state.speed * dt);
+
+  // keep the run inside the flats
+  const dist = Math.hypot(pos.x, pos.z);
+  if (dist > ARENA) {
+    pos.multiplyScalar(ARENA / dist);
+    state.speed *= 0.55;
+  }
+  // shove off rocks and cacti
+  for (const o of obstacles) {
+    const dx = pos.x - o.x, dz = pos.z - o.z;
+    const d = Math.hypot(dx, dz), min = o.r + 1.9;
+    if (d < min && d > 0.001) {
+      pos.x = o.x + (dx / d) * min;
+      pos.z = o.z + (dz / d) * min;
+      state.speed *= 0.72;
+    }
+  }
+
+  /* --- stance: sit on the dunes, lean into the corners --------------- */
+  const h = ground(pos.x, pos.z);
+  buggy.position.set(pos.x, h, pos.z);
+  buggy.rotation.y = state.heading;
+
+  const fx = pos.x + dir.x * WHEELBASE / 2, fz = pos.z + dir.z * WHEELBASE / 2;
+  const bx = pos.x - dir.x * WHEELBASE / 2, bz = pos.z - dir.z * WHEELBASE / 2;
+  const right = new THREE.Vector3(dir.z, 0, -dir.x);
+  const lx = pos.x + right.x * TRACK / 2, lz = pos.z + right.z * TRACK / 2;
+  const rx = pos.x - right.x * TRACK / 2, rz = pos.z - right.z * TRACK / 2;
+
+  const pitchTerrain = Math.atan2(ground(fx, fz) - ground(bx, bz), WHEELBASE);
+  const rollTerrain = Math.atan2(ground(lx, lz) - ground(rx, rz), TRACK);
+  running.rotation.x = -pitchTerrain;
+  running.rotation.z = rollTerrain;
+
+  const squat = THREE.MathUtils.clamp(inp.throttle * 0.05 - state.speed * 0.0012, -0.06, 0.06);
+  const lean = THREE.MathUtils.clamp(state.steer * state.speed * 0.022, -0.16, 0.16);
+  chassis.rotation.x += ((-pitchTerrain - squat) - chassis.rotation.x) * Math.min(1, 7 * dt);
+  chassis.rotation.z += ((rollTerrain + lean) - chassis.rotation.z) * Math.min(1, 7 * dt);
+
+  /* --- wheels: spin from real ground speed, front pair steers -------- */
+  for (const w of wheels) {
+    w.mesh.rotation.x += (state.speed / w.radius) * dt;
+    if (w.front) w.pivot.rotation.y += (state.steer - w.pivot.rotation.y) * Math.min(1, 12 * dt);
+  }
+
+  /* --- guns ---------------------------------------------------------- */
+  state.heat = Math.max(0, state.heat - (state.overheated ? 0.55 : 0.34) * dt);
+  if (state.overheated) {
+    state.cool -= dt;
+    if (state.cool <= 0 && state.heat < 0.35) state.overheated = false;
+  }
+  state.shotClock -= dt;
+  if (inp.fire && !state.overheated && state.shotClock <= 0) {
+    fire();
+    state.shotClock = 0.105;
+  }
+  for (const fl of flashes) {
+    if (fl.life > 0) {
+      fl.life -= dt;
+      fl.mesh.scale.setScalar(0.7 + Math.random() * 0.7);
+      fl.mesh.material.opacity = Math.max(0, fl.life / 0.07);
+      if (fl.life <= 0) fl.mesh.visible = false;
+    }
+  }
+
+  /* --- shells + hits -------------------------------------------------- */
+  for (const s of shells) {
+    if (s.life <= 0) continue;
+    s.life -= dt;
+    s.mesh.position.addScaledVector(s.vel, dt);
+    if (s.mesh.position.y < ground(s.mesh.position.x, s.mesh.position.z)) s.life = 0;
+    for (const d of drones) {
+      if (!d.alive) continue;
+      if (s.mesh.position.distanceTo(d.group.position) < 1.9) {
+        d.alive = false;
+        d.group.visible = false;
+        d.respawn = 2.2;
+        burst(d.group.position);
+        state.kills++;
+        state.chain = Math.min(5, state.chain + 1);
+        state.chainTimer = 3;
+        state.score += 100 * state.chain;
+        state.shake = Math.min(0.6, state.shake + 0.2);
+        s.life = 0;
+        break;
+      }
+    }
+    if (s.life <= 0) s.mesh.visible = false;
+  }
+
+  for (const s of shards) {
+    if (s.life <= 0) continue;
+    s.life -= dt;
+    s.vel.y -= 22 * dt;
+    s.mesh.position.addScaledVector(s.vel, dt);
+    s.mesh.rotation.x += s.spin.x * dt;
+    s.mesh.rotation.y += s.spin.y * dt;
+    if (s.life <= 0) s.mesh.visible = false;
+  }
+
+  /* --- drones --------------------------------------------------------- */
+  spinAngle += dt;
+  for (const d of drones) {
+    if (!d.alive) {
+      d.respawn -= dt;
+      if (d.respawn <= 0) placeDrone(d);
+      continue;
+    }
+    d.phase += dt * 0.6;
+    const wob = Math.sin(d.phase * 1.4) * 0.5;
+    d.group.position.set(
+      d.home.x + Math.cos(d.phase * 0.35) * 5,
+      ground(d.home.x, d.home.z) + 3.1 + wob,
+      d.home.z + Math.sin(d.phase * 0.35) * 5,
+    );
+    d.core.rotation.y += d.spin * dt;
+    d.core.rotation.x += d.spin * 0.4 * dt;
+    d.ring.rotation.z += d.spin * 1.6 * dt;
+  }
+
+  /* --- chain + clock --------------------------------------------------- */
+  if (state.chainTimer > 0) {
+    state.chainTimer -= dt;
+    if (state.chainTimer <= 0) state.chain = 0;
+  }
+  if (state.phase === 'running') {
+    state.t -= dt;
+    if (state.t <= 0) { state.t = 0; endRun(); }
+  }
+
+  /* --- camera ---------------------------------------------------------- */
+  state.shake = Math.max(0, state.shake - dt * 1.8);
+  if (state.phase === 'idle') {
+    const a = REDUCED ? 0.6 : spinAngle * 0.22;
+    tmp.set(Math.sin(a) * 13, 5.6, Math.cos(a) * 13).add(buggy.position);
+    camPos.lerp(tmp, Math.min(1, 2.2 * dt));
+    camAim.lerp(buggy.position.clone().setY(buggy.position.y + 1.4), Math.min(1, 3 * dt));
+  } else {
+    const back = 9.6 + Math.abs(state.speed) * 0.16;
+    tmp.set(
+      pos.x - dir.x * back - right.x * state.steer * 2.4,
+      h + 4.4,
+      pos.z - dir.z * back - right.z * state.steer * 2.4,
+    );
+    camPos.lerp(tmp, Math.min(1, 5.5 * dt));
+    camAim.lerp(tmp.set(pos.x + dir.x * 9, h + 2.2, pos.z + dir.z * 9), Math.min(1, 6 * dt));
+  }
+  camera.position.copy(camPos);
+  if (state.shake > 0 && !REDUCED) {
+    camera.position.x += (Math.random() - 0.5) * state.shake * 0.5;
+    camera.position.y += (Math.random() - 0.5) * state.shake * 0.5;
+  }
+  camera.lookAt(camAim);
+
+  sun.target.position.copy(buggy.position);
+  sun.position.set(buggy.position.x - 48, 64, buggy.position.z + 38);
+}
+
+/* ------------------------------------------------------------------- hud */
+let hudClock = 0;
+function hud(dt) {
+  hudClock += dt;
+  if (hudClock < 0.08) return;
+  hudClock = 0;
+  $('score').textContent = state.score;
+  const t = Math.max(0, state.t);
+  $('clock').textContent = Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+  $('clock').classList.toggle('warn', t <= 15);
+  $('kmh').textContent = Math.round(Math.abs(state.speed) * 3.6);
+  const rpm = wheels.length
+    ? Math.round(Math.abs(state.speed) / wheels[0].radius * 60 / (2 * Math.PI))
+    : 0;
+  $('rpm').textContent = rpm;
+  $('heatFill').style.width = (state.heat * 100).toFixed(0) + '%';
+  $('heatBar').classList.toggle('hot', state.overheated || state.heat > 0.7);
+  const c = $('combo');
+  c.classList.toggle('on', state.chain > 1);
+  c.textContent = '\u00d7' + state.chain + ' chain';
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  step(dt);
+  hud(dt);
+  renderer.render(scene, camera);
+}
+
+/* ------------------------------------------------------------------ boot */
+function start(restored) {
+  if (restored && typeof restored.best === 'number' && restored.best > state.best) {
+    state.best = restored.best;
+  }
+  $('loading').hidden = true;
+  frame();
+}
+
+loadBuggy().then(() => {
+  if (window.claude?.hot?.ready) window.claude.hot.ready(start);
+  else start(window.claude?.hot?.data ?? {});
+  window.claude?.hot?.snapshot?.(() => ({ best: state.best }));
+}).catch((err) => {
+  $('loading').textContent = 'Chassis geometry failed to load \u2014 ' + err.message;
+});
+</script>
+
+</body>
+</html>

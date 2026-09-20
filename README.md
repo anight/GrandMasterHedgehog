@@ -31,8 +31,13 @@ a strip along the top, the stick and fire button drop into the bottom corners,
 and the start and end panels go two-column so the button is never pushed off a
 360px-tall screen.
 
-You have 90 seconds to shoot down scrap drones. The cannons overheat if you
+You have five minutes to shoot down scrap drones. The cannons overheat if you
 hold the trigger, and quick successive kills build a chain multiplier.
+
+The cannons are synthesized with the Web Audio API rather than loaded as
+files — a filtered noise crack over a pitch-dropping thump, jittered per shot
+so a burst does not sound mechanical, and panned to the barrel that fired.
+`M` or the note button mutes; the choice is remembered.
 
 ## How the wheels work
 

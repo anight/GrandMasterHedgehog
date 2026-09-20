@@ -59,6 +59,22 @@
     -webkit-backdrop-filter: blur(6px);
   }
   .plate.clock { border-left-color: var(--brass); text-align: right; }
+  .topright { display: flex; align-items: flex-start; gap: 8px; }
+  .iconbtn {
+    pointer-events: auto;
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--bone);
+    font-size: 15px; line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .iconbtn:hover { border-color: var(--line-strong); }
+  .iconbtn:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .iconbtn.off { color: var(--bone-dim); text-decoration: line-through; }
   .label {
     display: block;
     font-family: var(--display);
@@ -292,6 +308,7 @@
       padding-right: calc(10px + env(safe-area-inset-right, 0px));
     }
     .plate { padding: 4px 10px 5px; }
+    .topright { gap: 6px; }
     .value { font-size: 17px; }
     .label { font-size: 9px; letter-spacing: 0.14em; }
     .combo { font-size: 10px; }
@@ -366,9 +383,13 @@
       <span class="value" id="score">0</span>
       <span class="combo" id="combo">&times;2 chain</span>
     </div>
-    <div class="plate clock">
-      <span class="label">Run time</span>
-      <span class="value" id="clock">1:30</span>
+    <div class="topright">
+      <button class="iconbtn" id="mute" type="button" title="Sound on or off (M)"
+              aria-pressed="false" aria-label="Sound on">&#9834;</button>
+      <div class="plate clock">
+        <span class="label">Run time</span>
+        <span class="value" id="clock">5:00</span>
+      </div>
     </div>
   </header>
 
@@ -390,7 +411,7 @@
   <footer class="hud hud-keys">
     <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive</div>
     <div><kbd>Space</kbd> fire sponson cannons</div>
-    <div><kbd>R</kbd> restart run</div>
+    <div><kbd>R</kbd> restart run<span style="width:8px"></span><kbd>M</kbd> sound</div>
   </footer>
 
   <div class="touch" id="touch">
@@ -413,7 +434,7 @@
         <div class="spec"><span class="label">Drive</span><b>4 &times; treaded</b></div>
         <div class="spec"><span class="label">Armament</span><b>2 &times; 20mm</b></div>
         <div class="spec"><span class="label">Quill array</span><b>68 spines</b></div>
-        <div class="spec"><span class="label">Run length</span><b>90 s</b></div>
+        <div class="spec"><span class="label">Run length</span><b>5 min</b></div>
       </div>
       <button class="go" id="startBtn">Start the run</button>
       <p class="fineprint" id="bestLine">Cannons overheat if you hold the trigger &mdash; let them cool.</p>
@@ -697,6 +718,7 @@ addEventListener('keydown', (e) => {
   if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
   keys[e.key.toLowerCase()] = true;
   if (e.key.toLowerCase() === 'r' && state.phase !== 'idle') startRun();
+  if (e.key.toLowerCase() === 'm') toggleMute();
   if (state.phase === 'idle' && (e.key === ' ' || e.key === 'Enter')) startRun();
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
@@ -787,7 +809,7 @@ const input = () => ({
 });
 
 /* ----------------------------------------------------------------- state */
-const RUN_SECONDS = 90;
+const RUN_SECONDS = 300;
 const MAXV = 26, WHEELBASE = 2.6, TRACK = 2.0;
 
 const state = {
@@ -820,6 +842,7 @@ const camPos = new THREE.Vector3(0, 8, -34);
 const camAim = new THREE.Vector3();
 
 function startRun() {
+  initAudio();
   state.phase = 'running';
   state.t = RUN_SECONDS;
   state.score = 0; state.kills = 0; state.chain = 0; state.chainTimer = 0;
@@ -850,6 +873,113 @@ $('startBtn').addEventListener('click', startRun);
 $('againBtn').addEventListener('click', startRun);
 if (state.best > 0) $('bestLine').textContent = 'Best run so far: ' + state.best + ' scrap. Cannons overheat if you hold the trigger.';
 
+/* ----------------------------------------------------------------- audio */
+// synthesized, so nothing has to load: a filtered noise crack for the muzzle
+// over a short pitch-dropping thump for the body of the report
+const audio = { ctx: null, master: null, noise: null, muted: false };
+try { audio.muted = localStorage.getItem('gmh-muted') === '1'; } catch (e) { /* ignore */ }
+
+function initAudio() {
+  if (audio.ctx) {
+    if (audio.ctx.state === 'suspended') audio.ctx.resume();
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;                       // no Web Audio: the game just stays quiet
+  audio.ctx = new AC();
+  audio.master = audio.ctx.createGain();
+  audio.master.gain.value = audio.muted ? 0 : 0.7;
+  audio.master.connect(audio.ctx.destination);
+  const n = Math.floor(audio.ctx.sampleRate * 0.4);
+  const buf = audio.ctx.createBuffer(1, n, audio.ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  audio.noise = buf;
+}
+
+function cannonShot(side) {
+  const c = audio.ctx;
+  if (!c || audio.muted || !audio.noise) return;
+  if (c.state === 'suspended') c.resume();
+  const t = c.currentTime;
+
+  // the two sponsons sit either side of the hull, so pan the barrels apart
+  let out = audio.master;
+  let pan = null;
+  if (c.createStereoPanner) {
+    pan = c.createStereoPanner();
+    // MUZZLES[0] sits at +X, which is the buggy's left and, with the chase
+    // camera behind it, the player's left too
+    pan.pan.value = side ? 0.4 : -0.4;
+    pan.connect(audio.master);
+    out = pan;
+  }
+
+  const src = c.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 0.85 + Math.random() * 0.3;
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 900 + Math.random() * 420;
+  bp.Q.value = 0.8;
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.85, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  src.connect(bp).connect(ng).connect(out);
+  src.start(t);
+  src.stop(t + 0.24);
+
+  const osc = c.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(150 + Math.random() * 30, t);
+  osc.frequency.exponentialRampToValueAtTime(42, t + 0.16);
+  const og = c.createGain();
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(0.7, t + 0.008);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  osc.connect(og).connect(out);
+  osc.start(t);
+  osc.stop(t + 0.26);
+
+  if (pan) osc.onended = () => pan.disconnect();
+}
+
+// the dry click of a trigger pulled on cooked barrels
+function overheatClick() {
+  const c = audio.ctx;
+  if (!c || audio.muted || !audio.noise) return;
+  const t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 2.4;
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 2400;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.3, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  src.connect(hp).connect(g).connect(audio.master);
+  src.start(t);
+  src.stop(t + 0.07);
+}
+
+function applyMute() {
+  const btn = $('mute');
+  btn.classList.toggle('off', audio.muted);
+  btn.setAttribute('aria-pressed', String(audio.muted));
+  btn.setAttribute('aria-label', audio.muted ? 'Sound off' : 'Sound on');
+  if (audio.master) audio.master.gain.value = audio.muted ? 0 : 0.7;
+  try { localStorage.setItem('gmh-muted', audio.muted ? '1' : '0'); } catch (e) { /* ignore */ }
+}
+
+function toggleMute() {
+  audio.muted = !audio.muted;
+  if (!audio.muted) initAudio();
+  applyMute();
+}
+$('mute').addEventListener('click', toggleMute);
+applyMute();
+
 /* ------------------------------------------------------------------ fire */
 const worldMuzzle = new THREE.Vector3();
 const forward = new THREE.Vector3();
@@ -875,6 +1005,7 @@ function fire() {
   fl.life = 0.07;
   fl.mesh.visible = true;
 
+  cannonShot(side);
   state.heat = Math.min(1, state.heat + 0.085);
   if (state.heat >= 1) { state.overheated = true; state.cool = 1.6; }
   state.shake = Math.min(0.5, state.shake + 0.14);
@@ -989,6 +1120,9 @@ function step(dt) {
   if (inp.fire && !state.overheated && state.shotClock <= 0) {
     fire();
     state.shotClock = 0.105;
+  } else if (inp.fire && state.overheated && state.shotClock <= 0) {
+    overheatClick();
+    state.shotClock = 0.32;
   }
   for (const fl of flashes) {
     if (fl.life > 0) {

@@ -47,6 +47,8 @@
     gap: 12px;
     padding: 16px;
     padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
   }
   .plate {
     background: var(--panel);
@@ -81,7 +83,7 @@
 
   /* ---- instrument stack ---------------------------------------------- */
   .hud-gauges {
-    right: 16px;
+    right: calc(16px + env(safe-area-inset-right, 0px));
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     width: 190px;
     background: var(--panel);
@@ -109,7 +111,7 @@
 
   /* ---- key legend ----------------------------------------------------- */
   .hud-keys {
-    left: 16px;
+    left: calc(16px + env(safe-area-inset-left, 0px));
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     display: grid; gap: 5px;
     font-size: 11px; color: var(--bone-dim);
@@ -129,6 +131,8 @@
     justify-content: space-between; align-items: flex-end;
     padding: 16px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
     gap: 12px;
   }
   .pad { display: flex; gap: 10px; }
@@ -231,7 +235,88 @@
     .value { font-size: 20px; }
     .hud-gauges { width: 140px; padding: 9px 10px 10px; }
     .row .num { font-size: 14px; }
+    /* five buttons plus gutters have to fit inside a 390px phone */
+    .btn { width: 54px; height: 54px; }
+    .btn.fire { width: 64px; }
+    .pad { gap: 8px; }
+    .touch {
+      gap: 8px;
+      padding-left: calc(12px + env(safe-area-inset-left, 0px));
+      padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    }
   }
+  @media (max-width: 344px) {
+    .btn { width: 46px; height: 46px; font-size: 10px; }
+    .btn.fire { width: 56px; }
+    .pad { gap: 6px; }
+  }
+
+  /* ---- phones held sideways: short viewport, thumbs at both edges ----- */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .hud-top {
+      padding: 8px;
+      padding-top: calc(8px + env(safe-area-inset-top, 0px));
+      padding-left: calc(10px + env(safe-area-inset-left, 0px));
+      padding-right: calc(10px + env(safe-area-inset-right, 0px));
+    }
+    .plate { padding: 4px 10px 5px; }
+    .value { font-size: 17px; }
+    .label { font-size: 9px; letter-spacing: 0.14em; }
+    .combo { font-size: 10px; }
+
+    /* instruments run along the top, clear of both thumbs */
+    .hud-gauges,
+    body.touch-mode .hud-gauges {
+      top: calc(8px + env(safe-area-inset-top, 0px));
+      bottom: auto;
+      left: 50%; right: auto;
+      transform: translateX(-50%);
+      width: auto;
+      grid-auto-flow: column;
+      align-items: center;
+      gap: 14px;
+      padding: 5px 12px;
+    }
+    .hud-gauges .row { gap: 7px; }
+    .hud-gauges .row .num { font-size: 14px; }
+    .hud-gauges .bar { width: 66px; }
+
+    .hud-keys { display: none; }
+    .touch { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .btn { width: 54px; height: 54px; font-size: 11px; }
+    .btn.fire { width: 66px; }
+
+    /* the panel has to fit a ~360px-tall window, so it goes two-column and
+       scrolls rather than clipping the button off the bottom */
+    .overlay {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .card {
+      margin: auto;
+      width: min(720px, 100%);
+      padding: 14px 18px 16px;
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      column-gap: 20px;
+      align-items: start;
+    }
+    .card .eyebrow, .card h1, .card p, .card .scoreline { grid-column: 1; }
+    .card .specs, .card .go, .card .fineprint { grid-column: 2; }
+    h1 { font-size: clamp(22px, 5.4vh, 30px); margin: 4px 0 6px; }
+    .card p { font-size: 12px; line-height: 1.5; margin-bottom: 0; max-width: none; }
+    .specs { margin-bottom: 10px; }
+    .spec { padding: 6px 10px; }
+    .spec b { font-size: 13px; }
+    .go { padding: 11px; font-size: 13px; }
+    .scoreline { margin-bottom: 0; }
+    .scoreline .big { font-size: 34px; }
+    .fineprint { margin-top: 8px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .combo { transition: none; }
   }
@@ -724,6 +809,11 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
+addEventListener('orientationchange', () => {
+  requestAnimationFrame(resize);
+  setTimeout(resize, 250);
+});
+visualViewport?.addEventListener('resize', resize);
 resize();
 
 function step(dt) {

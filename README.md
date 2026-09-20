@@ -21,6 +21,11 @@ GitHub Pages by `.github/workflows/pages.yml` on every push that touches it.
 **Controls** — `W` `A` `S` `D` or arrow keys to drive, `Space` to fire, `R` to
 restart. Touch controls appear on phones and narrow windows.
 
+Held sideways, the HUD rearranges for the short viewport: instruments move to
+a strip along the top, steering sits under the left thumb and throttle/fire
+under the right, and the start and end panels go two-column so the button is
+never pushed off a 360px-tall screen.
+
 You have 90 seconds to shoot down scrap drones. The cannons overheat if you
 hold the trigger, and quick successive kills build a chain multiplier.
 

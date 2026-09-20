@@ -9,10 +9,14 @@ software rasterizer in the same repo, and exported to a browser game.
 
 ## Play it
 
+**<https://anight.github.io/GrandMasterHedgehog/>**
+
+Or locally:
+
     cd web && python3 -m http.server 8000
 
-Then open <http://localhost:8000>. The page is static — `web/` can be served
-from GitHub Pages or any file host as-is.
+Then open <http://localhost:8000>. The page is static — `web/` is published to
+GitHub Pages by `.github/workflows/pages.yml` on every push that touches it.
 
 **Controls** — `W` `A` `S` `D` or arrow keys to drive, `Space` to fire, `R` to
 restart. Touch controls appear on phones and narrow windows.

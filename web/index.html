@@ -135,7 +135,34 @@
     padding-right: calc(16px + env(safe-area-inset-right, 0px));
     gap: 12px;
   }
-  .pad { display: flex; gap: 10px; }
+  /* left thumb drives, right thumb fires */
+  .stick {
+    position: relative;
+    width: 118px; height: 118px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    touch-action: none; user-select: none;
+  }
+  .stick::before {
+    content: "";
+    position: absolute; inset: 13px;
+    border-radius: 50%;
+    border: 1px dashed rgba(239, 230, 212, 0.13);
+  }
+  .stick.active { border-color: var(--rust); }
+  .stick-knob {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: rgba(216, 80, 60, 0.5);
+    border: 1px solid var(--line-strong);
+    pointer-events: none;
+  }
+  .stick.active .stick-knob { background: rgba(216, 80, 60, 0.78); }
+  .stick.springing .stick-knob { transition: transform 0.16s ease-out; }
   .btn {
     width: 62px; height: 62px;
     display: grid; place-items: center;
@@ -147,7 +174,11 @@
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
-  .btn.fire { border-color: var(--rust); color: var(--rust); width: 76px; }
+  .btn.fire {
+    border-color: var(--rust); color: var(--rust);
+    width: 86px; height: 86px; border-radius: 50%;
+    font-size: 13px;
+  }
   .btn:active, .btn.down { background: rgba(216, 80, 60, 0.35); color: var(--bone); }
   body.touch-mode .touch { display: flex; }
   body.touch-mode .hud-keys { display: none; }
@@ -237,10 +268,9 @@
     .value { font-size: 20px; }
     .hud-gauges { width: 140px; padding: 9px 10px 10px; }
     .row .num { font-size: 14px; }
-    /* five buttons plus gutters have to fit inside a 390px phone */
-    .btn { width: 54px; height: 54px; }
-    .btn.fire { width: 64px; }
-    .pad { gap: 8px; }
+    .stick { width: 104px; height: 104px; }
+    .stick-knob { width: 48px; height: 48px; }
+    .btn.fire { width: 76px; height: 76px; }
     .touch {
       gap: 8px;
       padding-left: calc(12px + env(safe-area-inset-left, 0px));
@@ -248,9 +278,9 @@
     }
   }
   @media (max-width: 344px) {
-    .btn { width: 46px; height: 46px; font-size: 10px; }
-    .btn.fire { width: 56px; }
-    .pad { gap: 6px; }
+    .stick { width: 92px; height: 92px; }
+    .stick-knob { width: 42px; height: 42px; }
+    .btn.fire { width: 68px; height: 68px; font-size: 11px; }
   }
 
   /* ---- phones held sideways: short viewport, thumbs at both edges ----- */
@@ -285,8 +315,9 @@
 
     .hud-keys { display: none; }
     .touch { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
-    .btn { width: 54px; height: 54px; font-size: 11px; }
-    .btn.fire { width: 66px; }
+    .stick { width: 100px; height: 100px; }
+    .stick-knob { width: 46px; height: 46px; }
+    .btn.fire { width: 74px; height: 74px; font-size: 12px; }
 
     /* the panel has to fit a ~360px-tall window, so it goes two-column and
        scrolls rather than clipping the button off the bottom */
@@ -321,6 +352,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .combo { transition: none; }
+    .stick.springing .stick-knob { transition: none; }
   }
 </style>
 </head>
@@ -362,15 +394,10 @@
   </footer>
 
   <div class="touch" id="touch">
-    <div class="pad">
-      <div class="btn" data-key="left">&#9664;</div>
-      <div class="btn" data-key="right">&#9654;</div>
+    <div class="stick" id="stick" role="application" aria-label="Drive">
+      <span class="stick-knob" id="knob"></span>
     </div>
-    <div class="pad">
-      <div class="btn" data-key="back">REV</div>
-      <div class="btn fire" data-key="fire">FIRE</div>
-      <div class="btn" data-key="fwd">GO</div>
-    </div>
+    <div class="btn fire" data-key="fire">FIRE</div>
   </div>
 
   <div class="overlay" id="startCard">
@@ -663,7 +690,8 @@ for (let i = 0; i < 60; i++) {
 
 /* -------------------------------------------------------------- controls */
 const keys = Object.create(null);
-const touch = { left: 0, right: 0, fwd: 0, back: 0, fire: 0 };
+const touch = { fire: 0 };
+const stick = { x: 0, y: 0 };      // -1..1, centre is rest
 
 addEventListener('keydown', (e) => {
   if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
@@ -672,7 +700,11 @@ addEventListener('keydown', (e) => {
   if (state.phase === 'idle' && (e.key === ' ' || e.key === 'Enter')) startRun();
 });
 addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+addEventListener('blur', () => {
+  for (const k in keys) keys[k] = false;
+  touch.fire = 0;
+  stick.x = stick.y = 0;
+});
 
 if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch-mode');
 for (const btn of document.querySelectorAll('.btn')) {
@@ -688,9 +720,69 @@ for (const btn of document.querySelectorAll('.btn')) {
   btn.addEventListener('pointerleave', set(0));
 }
 
+/* thumb stick: drag from the base, release springs back to centre */
+{
+  const base = $('stick'), knob = $('knob');
+  let id = null, cx = 0, cy = 0, limit = 32, spring = 0;
+
+  const place = (dx, dy) => { knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; };
+
+  const move = (e) => {
+    if (id === null || e.pointerId !== id) return;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > limit) { dx = dx / d * limit; dy = dy / d * limit; }
+    place(dx, dy);
+    stick.x = dx / limit;
+    stick.y = dy / limit;
+  };
+
+  const release = (e) => {
+    if (id === null || (e && e.pointerId !== id)) return;
+    id = null;
+    stick.x = stick.y = 0;
+    base.classList.remove('active');
+    base.classList.add('springing');
+    place(0, 0);
+    clearTimeout(spring);
+    spring = setTimeout(() => base.classList.remove('springing'), 200);
+  };
+
+  base.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    id = e.pointerId;
+    const r = base.getBoundingClientRect();
+    cx = r.left + r.width / 2;
+    cy = r.top + r.height / 2;
+    // ~35px of travel on a phone-sized base, so full lock is an easy thumb
+    // move; the knob rides a little proud of the ring at the extremes
+    limit = Math.max(18, r.width * 0.34);
+    base.classList.remove('springing');
+    base.classList.add('active');
+    base.setPointerCapture(id);
+    move(e);
+  });
+  base.addEventListener('pointermove', move);
+  base.addEventListener('pointerup', release);
+  base.addEventListener('pointercancel', release);
+  base.addEventListener('lostpointercapture', release);
+}
+
+// dead zone, then rescale so the usable travel still reaches full deflection
+const DEAD = 0.18;
+function axis(v) {
+  const a = Math.abs(v);
+  if (a < DEAD) return 0;
+  return Math.sign(v) * Math.min(1, (a - DEAD) / (1 - DEAD));
+}
+
+const pick = (k, s) => (Math.abs(k) >= Math.abs(s) ? k : s);
+
 const input = () => ({
-  throttle: (keys.w || keys.arrowup || touch.fwd ? 1 : 0) - (keys.s || keys.arrowdown || touch.back ? 1 : 0),
-  steer: (keys.a || keys.arrowleft || touch.left ? 1 : 0) - (keys.d || keys.arrowright || touch.right ? 1 : 0),
+  throttle: pick((keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0),
+                 -axis(stick.y)),
+  steer: pick((keys.a || keys.arrowleft ? 1 : 0) - (keys.d || keys.arrowright ? 1 : 0),
+              -axis(stick.x)),
   fire: !!(keys[' '] || touch.fire),
 });
 
@@ -826,9 +918,9 @@ function step(dt) {
   const inp = state.phase === 'running' ? input() : { throttle: 0, steer: 0, fire: false };
 
   /* --- drive ------------------------------------------------------- */
-  if (inp.throttle > 0) state.speed += 17 * dt;
-  else if (inp.throttle < 0) state.speed -= (state.speed > 0 ? 30 : 13) * dt;
-  state.speed -= state.speed * (inp.throttle === 0 ? 1.15 : 0.35) * dt;
+  if (inp.throttle > 0) state.speed += 17 * dt * inp.throttle;
+  else if (inp.throttle < 0) state.speed -= (state.speed > 0 ? 30 : 13) * dt * -inp.throttle;
+  state.speed -= state.speed * (Math.abs(inp.throttle) < 0.05 ? 1.15 : 0.35) * dt;
   state.speed = THREE.MathUtils.clamp(state.speed, -10, MAXV);
   if (Math.abs(state.speed) < 0.02) state.speed = 0;
 

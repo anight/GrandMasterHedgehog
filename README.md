@@ -19,12 +19,17 @@ Then open <http://localhost:8000>. The page is static — `web/` is published to
 GitHub Pages by `.github/workflows/pages.yml` on every push that touches it.
 
 **Controls** — `W` `A` `S` `D` or arrow keys to drive, `Space` to fire, `R` to
-restart. Touch controls appear on phones and narrow windows.
+restart.
+
+On touch screens an analog stick sits under the left thumb and the fire button
+under the right. The stick is proportional — a half push is half throttle and
+a gentle lean is a gentle turn — with a dead zone at centre so resting a thumb
+on it does nothing.
 
 Held sideways, the HUD rearranges for the short viewport: instruments move to
-a strip along the top, steering sits under the left thumb and throttle/fire
-under the right, and the start and end panels go two-column so the button is
-never pushed off a 360px-tall screen.
+a strip along the top, the stick and fire button drop into the bottom corners,
+and the start and end panels go two-column so the button is never pushed off a
+360px-tall screen.
 
 You have 90 seconds to shoot down scrap drones. The cannons overheat if you
 hold the trigger, and quick successive kills build a chain multiplier.

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bristle Runner</title>
+<title>Grand Master Hedgehog</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -163,6 +163,8 @@
     -webkit-backdrop-filter: blur(3px);
   }
   .card {
+    /* border-box or the 26px padding pushes the panel past a phone's gutter */
+    box-sizing: border-box;
     width: min(460px, 100%);
     background: var(--panel-solid);
     border: 1px solid var(--line-strong);
@@ -374,7 +376,7 @@
   <div class="overlay" id="startCard">
     <div class="card">
       <span class="eyebrow">Quill-class assault buggy</span>
-      <h1>Bristle Runner</h1>
+      <h1>Grand Master Hedgehog</h1>
       <p>
         Eleven scrap drones are drifting over the flats. Your hedgehog runs four
         treaded wheels and a pair of forward-firing sponson cannons bolted to the
@@ -715,7 +717,11 @@ const state = {
   best: 0,
 };
 
-try { state.best = Number(localStorage.getItem('bristle-best') || 0) || 0; } catch (e) { /* private mode */ }
+try {
+  // 'bristle-best' is the old key, read once so nobody loses a best run
+  state.best = Number(localStorage.getItem('gmh-best')
+    || localStorage.getItem('bristle-best') || 0) || 0;
+} catch (e) { /* private mode */ }
 
 const pos = new THREE.Vector3(0, 0, -18);
 const camPos = new THREE.Vector3(0, 8, -34);
@@ -742,7 +748,7 @@ function endRun() {
   $('endTitle').textContent = state.score > state.best ? 'New best run' : 'Clock out';
   if (state.score > state.best) {
     state.best = state.score;
-    try { localStorage.setItem('bristle-best', String(state.best)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem('gmh-best', String(state.best)); } catch (e) { /* ignore */ }
   }
   $('endBest').textContent = 'Best run: ' + state.best + ' scrap';
   $('endCard').hidden = false;

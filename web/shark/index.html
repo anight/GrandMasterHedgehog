@@ -1,0 +1,2006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Iron Fathom &mdash; robot shark</title>
+<meta name="description" content="Pilot a robot shark through a low-poly reef: collect crystals, strike the shoals, keep clear of the jellyfish.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #04161f;
+    --panel: rgba(6, 26, 36, 0.78);
+    --line: rgba(198, 240, 255, 0.16);
+    --line-strong: rgba(198, 240, 255, 0.34);
+    --foam: #dff4ff;
+    --foam-dim: #8bb0c2;
+    --coral: #ff6b5e;
+    --aqua: #46e0d0;
+    --amber: #ffc861;
+    --display: "Chakra Petch", "Trebuchet MS", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--foam);
+    font-family: var(--mono);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #app { position: fixed; inset: 0; overflow: hidden; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: absolute; pointer-events: none; z-index: 2; }
+
+  /* ---- top bar: catch total + run clock ------------------------------ */
+  .hud-top {
+    top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  }
+  .plate {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--aqua);
+    padding: 7px 14px 8px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .plate.clock { border-left-color: var(--amber); text-align: right; }
+  .topright { display: flex; align-items: flex-start; gap: 8px; }
+  .iconbtn {
+    pointer-events: auto;
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--foam);
+    font-size: 15px; line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .iconbtn:hover { border-color: var(--line-strong); }
+  .iconbtn:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
+  .iconbtn.off { color: var(--foam-dim); text-decoration: line-through; }
+  .label {
+    display: block;
+    font-family: var(--display);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--foam-dim);
+  }
+  .value {
+    display: block;
+    font-family: var(--mono); font-weight: 600;
+    font-size: 26px; line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .value.warn { color: var(--coral); }
+  .combo {
+    font-family: var(--display); font-weight: 700;
+    font-size: 12px; letter-spacing: 0.1em;
+    color: var(--amber);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .combo.on { opacity: 1; }
+
+  /* ---- instrument stack ---------------------------------------------- */
+  .hud-gauges {
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: 190px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 12px 14px 13px;
+    display: grid; gap: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .row .num { font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .row .unit { font-size: 10px; color: var(--foam-dim); }
+  .bar {
+    height: 6px; background: rgba(198, 240, 255, 0.12);
+    border: 1px solid var(--line); position: relative; overflow: hidden;
+  }
+  .bar i {
+    position: absolute; inset: 0 auto 0 0;
+    width: 0%; background: var(--aqua);
+    transition: width 0.08s linear;
+  }
+  .bar.low i { background: var(--coral); }
+
+  /* ---- keyboard legend ------------------------------------------------ */
+  .hud-keys {
+    left: calc(16px + env(safe-area-inset-left, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    display: grid; gap: 4px;
+    font-size: 11px; color: var(--foam-dim);
+  }
+  .hud-keys kbd {
+    font-family: var(--mono); font-size: 10px;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    padding: 2px 6px; color: var(--foam);
+  }
+
+  /* ---- touch controls: stick left, strike right ----------------------- */
+  .touch {
+    position: absolute; inset: auto 0 0 0; z-index: 3;
+    display: none;
+    justify-content: space-between; align-items: flex-end;
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+    gap: 12px;
+  }
+  .stick {
+    position: relative;
+    width: 118px; height: 118px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    touch-action: none; user-select: none;
+  }
+  .stick::before {
+    content: "";
+    position: absolute; inset: 13px;
+    border-radius: 50%;
+    border: 1px dashed rgba(198, 240, 255, 0.13);
+  }
+  .stick.active { border-color: var(--aqua); }
+  .stick-knob {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: rgba(70, 224, 208, 0.42);
+    border: 1px solid var(--line-strong);
+    pointer-events: none;
+  }
+  .stick.active .stick-knob { background: rgba(70, 224, 208, 0.72); }
+  .stick.springing .stick-knob { transition: transform 0.16s ease-out; }
+  .btn {
+    width: 62px; height: 62px;
+    display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--line-strong);
+    color: var(--foam);
+    font-family: var(--display); font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em;
+    user-select: none; touch-action: none;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .btn.strike {
+    border-color: var(--coral); color: var(--coral);
+    width: 86px; height: 86px; border-radius: 50%;
+    font-size: 13px;
+  }
+  .btn:active, .btn.down { background: rgba(255, 107, 94, 0.35); color: var(--foam); }
+  body.touch-mode .touch { display: flex; }
+  body.touch-mode .hud-keys { display: none; }
+  body.touch-mode .hud-gauges { width: 150px; bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ---- sting flash + out-of-bounds warning ---------------------------- */
+  #flash {
+    position: absolute; inset: 0; z-index: 3; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(255,107,94,0) 40%, rgba(178, 86, 230, 0.55) 100%);
+    opacity: 0;
+  }
+  .warn-plate {
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    border: 1px solid var(--coral);
+    background: rgba(24, 8, 10, 0.55);
+    padding: 8px 18px;
+    font-family: var(--display); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--coral);
+    opacity: 0; transition: opacity 0.2s;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .warn-plate.on { opacity: 1; }
+
+  /* ---- overlays ------------------------------------------------------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 4;
+    display: grid; place-items: center;
+    padding: 16px;
+    background: rgba(3, 18, 26, 0.6);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .card {
+    box-sizing: border-box;
+    width: min(460px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--aqua);
+    padding: 26px;
+  }
+  .eyebrow {
+    display: block;
+    font-family: var(--display); font-weight: 700;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--aqua);
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(26px, 6vw, 38px);
+    letter-spacing: 0.02em;
+    margin: 6px 0 12px;
+  }
+  .card p {
+    margin: 0 0 18px; font-size: 13px; line-height: 1.6;
+    color: var(--foam-dim); max-width: 42ch;
+  }
+  .specs {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 20px;
+  }
+  .spec { border: 1px solid var(--line); padding: 7px 10px; }
+  .spec b { display: block; font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .go {
+    display: block; width: 100%;
+    font-family: var(--display); font-weight: 700;
+    font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); background: var(--aqua);
+    border: 0; padding: 14px; cursor: pointer;
+  }
+  .go:hover { background: var(--foam); }
+  .go:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+  .fineprint { margin: 12px 0 0; font-size: 11px; color: var(--foam-dim); }
+  .fineprint a { color: var(--aqua); }
+  .scoreline {
+    display: flex; align-items: baseline; gap: 12px;
+    font-variant-numeric: tabular-nums; margin-bottom: 16px;
+  }
+  .scoreline .big { font-size: 44px; font-weight: 600; line-height: 1; }
+  .scoreline .sub { font-size: 12px; color: var(--foam-dim); }
+
+  .overlay[hidden], .loading[hidden] { display: none !important; }
+
+  .loading {
+    position: absolute; inset: 0; z-index: 5;
+    display: grid; place-items: center;
+    background: var(--ink);
+    font-family: var(--display); font-weight: 600;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--foam-dim);
+    text-align: center; padding: 20px;
+  }
+
+  @media (max-width: 520px) {
+    .hud-keys { display: none; }
+    .touch { display: flex; }
+    .hud-gauges { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); width: 150px; }
+  }
+  @media (max-width: 460px) {
+    .value { font-size: 20px; }
+    .hud-gauges { width: 140px; padding: 9px 10px 10px; }
+    .row .num { font-size: 14px; }
+    .stick { width: 104px; height: 104px; }
+    .stick-knob { width: 48px; height: 48px; }
+    .btn.strike { width: 76px; height: 76px; }
+    .touch {
+      gap: 8px;
+      padding-left: calc(12px + env(safe-area-inset-left, 0px));
+      padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    }
+  }
+  @media (max-width: 344px) {
+    .stick { width: 92px; height: 92px; }
+    .stick-knob { width: 42px; height: 42px; }
+    .btn.strike { width: 68px; height: 68px; font-size: 11px; }
+  }
+
+  /* ---- phones held sideways: short viewport, thumbs at both edges ------ */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .hud-top {
+      padding: 8px;
+      padding-top: calc(8px + env(safe-area-inset-top, 0px));
+      padding-left: calc(10px + env(safe-area-inset-left, 0px));
+      padding-right: calc(10px + env(safe-area-inset-right, 0px));
+    }
+    .plate { padding: 4px 10px 5px; }
+    .topright { gap: 6px; }
+    .value { font-size: 17px; }
+    .label { font-size: 9px; letter-spacing: 0.14em; }
+    .combo { font-size: 10px; }
+
+    .hud-gauges,
+    body.touch-mode .hud-gauges {
+      top: calc(8px + env(safe-area-inset-top, 0px));
+      bottom: auto;
+      left: 50%; right: auto;
+      transform: translateX(-50%);
+      width: auto;
+      grid-auto-flow: column;
+      align-items: center;
+      gap: 14px;
+      padding: 5px 12px;
+    }
+    .hud-gauges .row { gap: 7px; }
+    .hud-gauges .row .num { font-size: 14px; }
+    .hud-gauges .bar { width: 66px; }
+
+    .hud-keys { display: none; }
+    .touch { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .stick { width: 100px; height: 100px; }
+    .stick-knob { width: 46px; height: 46px; }
+    .btn.strike { width: 74px; height: 74px; font-size: 12px; }
+
+    .overlay {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .card {
+      margin: auto;
+      width: min(720px, 100%);
+      padding: 14px 18px 16px;
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      column-gap: 20px;
+      align-items: start;
+    }
+    .card .eyebrow, .card h1, .card p, .card .scoreline { grid-column: 1; }
+    .card .specs, .card .go, .card .fineprint { grid-column: 2; }
+    h1 { font-size: clamp(22px, 5.4vh, 30px); margin: 4px 0 6px; }
+    .card p { font-size: 12px; line-height: 1.5; margin-bottom: 0; max-width: none; }
+    .specs { margin-bottom: 10px; }
+    .spec { padding: 6px 10px; }
+    .spec b { font-size: 13px; }
+    .go { padding: 11px; font-size: 13px; }
+    .scoreline { margin-bottom: 0; }
+    .scoreline .big { font-size: 34px; }
+    .fineprint { margin-top: 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .combo, .warn-plate { transition: none; }
+    .stick.springing .stick-knob { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+
+  <header class="hud hud-top">
+    <div class="plate">
+      <span class="label">Haul</span>
+      <span class="value" id="score">0</span>
+      <span class="combo" id="combo">&times;2 feeding frenzy</span>
+    </div>
+    <div class="topright">
+      <button class="iconbtn" id="mute" type="button" title="Sound on or off (M)"
+              aria-pressed="false" aria-label="Sound on">&#9834;</button>
+      <div class="plate clock">
+        <span class="label">Dive time</span>
+        <span class="value" id="clock">3:00</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hud hud-gauges">
+    <div class="row">
+      <span class="label">Speed</span>
+      <span><span class="num" id="kn">0</span> <span class="unit">kn</span></span>
+    </div>
+    <div class="row">
+      <span class="label">Depth</span>
+      <span><span class="num" id="depth">0</span> <span class="unit">m</span></span>
+    </div>
+    <div>
+      <div class="row"><span class="label">Strike charge</span></div>
+      <div class="bar" id="chargeBar"><i id="chargeFill"></i></div>
+    </div>
+  </div>
+
+  <footer class="hud hud-keys">
+    <div><kbd>W</kbd><kbd>S</kbd> rise and dive<span style="width:8px"></span><kbd>A</kbd><kbd>D</kbd> turn</div>
+    <div><kbd>Space</kbd> strike</div>
+    <div><kbd>R</kbd> new dive<span style="width:8px"></span><kbd>M</kbd> sound</div>
+  </footer>
+
+  <div class="hud warn-plate" id="warn">Turn back to the reef</div>
+  <div id="flash"></div>
+
+  <div class="touch" id="touch">
+    <div class="stick" id="stick" role="application" aria-label="Swim">
+      <span class="stick-knob" id="knob"></span>
+    </div>
+    <div class="btn strike" data-key="strike">STRIKE</div>
+  </div>
+
+  <div class="overlay" id="startCard">
+    <div class="card">
+      <span class="eyebrow">Deep-survey unit &mdash; Mk. IV</span>
+      <h1>Iron Fathom</h1>
+      <p>
+        A robot shark on a three-minute sweep of the reef. Power crystals glow
+        along the sea floor; shoals, crabs and octopuses are worth more if you
+        can catch them. The jellyfish carry a live charge &mdash; keep the hull
+        off them.
+      </p>
+      <div class="specs">
+        <div class="spec"><span class="label">Drive</span><b>14-node tail</b></div>
+        <div class="spec"><span class="label">Jaws</span><b>Lunge strike</b></div>
+        <div class="spec"><span class="label">Optics</span><b>2 &times; wide eye</b></div>
+        <div class="spec"><span class="label">Dive length</span><b>3 min</b></div>
+      </div>
+      <button class="go" id="startBtn">Launch the dive</button>
+      <p class="fineprint" id="bestLine">Stick to swim, strike button to lunge. Quick catches build a chain.</p>
+      <p class="fineprint"><a href="../">Grand Master Hedgehog &mdash; the battle-buggy &rarr;</a></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="endCard" hidden>
+    <div class="card">
+      <span class="eyebrow">Dive complete</span>
+      <h1 id="endTitle">Surfacing</h1>
+      <div class="scoreline">
+        <span class="big" id="endScore">0</span>
+        <span class="sub" id="endDetail">hauled aboard</span>
+      </div>
+      <button class="go" id="againBtn">Dive again</button>
+      <p class="fineprint" id="endBest"></p>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">Spinning up the hull&hellip;</div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $ = (id) => document.getElementById(id);
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = THREE.MathUtils.clamp;
+
+/* ------------------------------------------------------------------ world */
+const ARENA = 132;        // soft boundary: past this the shark is turned round
+const SURFACE = 54;       // the underside of the waves
+const FOG = new THREE.Color('#0c4a5f');
+const DEEP = new THREE.Color('#031a27');
+const SHALLOW = new THREE.Color('#2a93ac');
+const SAND = new THREE.Color('#c2ad86');
+const SILT = new THREE.Color('#4d6560');
+
+// one dune field drives the sea-floor mesh, where everything is planted, and
+// the shark's belly clearance
+function seabed(x, z) {
+  return 1.9 * Math.sin(x * 0.021) * Math.cos(z * 0.018)
+       + 0.95 * Math.sin(x * 0.052 + 1.1) * Math.sin(z * 0.047)
+       + 0.34 * Math.sin(x * 0.131 + 2.3) * Math.cos(z * 0.112);
+}
+
+const renderer = new THREE.WebGLRenderer({
+  canvas: $('view'), antialias: true, powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(FOG, 0.0125);
+
+const camera = new THREE.PerspectiveCamera(58, 1, 0.4, 900);
+scene.add(camera);
+
+// water column: dark below, daylight above
+{
+  const g = new THREE.SphereGeometry(430, 18, 12);
+  const col = [];
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const t = clamp(p.getY(i) / 430 * 1.15 + 0.42, 0, 1);
+    const c = DEEP.clone().lerp(SHALLOW, t * t);
+    col.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.BackSide, fog: false,
+  })));
+}
+
+scene.add(new THREE.HemisphereLight(0x9fe6ff, 0x07202b, 1.0));
+const sun = new THREE.DirectionalLight(0xd8f6ff, 1.15);
+sun.position.set(26, 80, 18);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 12;
+sun.shadow.camera.far = 170;
+const SH = 26;
+Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
+sun.shadow.bias = -0.0018;
+sun.shadow.normalBias = 0.04;
+sun.shadow.camera.updateProjectionMatrix();
+scene.add(sun, sun.target);
+
+/* a soft radial sprite, reused for crystal glow, eyes and jellyfish bells */
+function glowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const GLOW = glowTexture();
+function glow(color, size) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: GLOW, color, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, fog: false,
+  }));
+  s.scale.setScalar(size);
+  return s;
+}
+
+/* ---- the sea floor --------------------------------------------------- */
+{
+  const g = new THREE.PlaneGeometry(700, 700, 140, 140);
+  g.rotateX(-Math.PI / 2);
+  const p = g.attributes.position;
+  const col = [];
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i);
+    const h = seabed(x, z);
+    p.setY(i, h);
+    const t = clamp(0.5 + h * 0.22, 0, 1);
+    const c = SILT.clone().lerp(SAND, t).multiplyScalar(0.92 + Math.random() * 0.14);
+    col.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({
+    vertexColors: true, flatShading: true,
+  }));
+  m.receiveShadow = true;
+  scene.add(m);
+}
+
+/* ---- the surface, seen from underneath -------------------------------- */
+const waves = new THREE.Mesh(
+  new THREE.PlaneGeometry(760, 760, 26, 26).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({
+    color: 0x8fe3f2, transparent: true, opacity: 0.34, side: THREE.DoubleSide,
+  }),
+);
+waves.position.y = SURFACE;
+scene.add(waves);
+const waveBase = waves.geometry.attributes.position.array.slice();
+
+/* shafts of daylight, hung from the surface and drifting */
+const shafts = [];
+{
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xa9ecff, transparent: true, opacity: 0.055, depthWrite: false,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+  });
+  for (let i = 0; i < 16; i++) {
+    const w = 5 + Math.random() * 9;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, SURFACE + 16), mat);
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * (ARENA + 40);
+    m.position.set(Math.cos(a) * r, SURFACE / 2 - 6, Math.sin(a) * r);
+    m.rotation.y = Math.random() * Math.PI;
+    m.rotation.z = (Math.random() - 0.5) * 0.28;
+    scene.add(m);
+    shafts.push({ mesh: m, phase: Math.random() * 6.28, tilt: m.rotation.z });
+  }
+}
+
+/* ---- rocks and coral heads -------------------------------------------- */
+const reef = [];                 // {x, z, y, r} - crystals and crabs sit on these
+{
+  const rockGeo = new THREE.IcosahedronGeometry(1, 0);
+  const rockMat = new THREE.MeshLambertMaterial({ color: 0x46595e, flatShading: true });
+  const coralMat = new THREE.MeshLambertMaterial({ color: 0xc96a7a, flatShading: true });
+  for (let i = 0; i < 80; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 14 + Math.pow(Math.random(), 0.65) * (ARENA + 40);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const s = 1.1 + Math.random() * 3.4;
+    const m = new THREE.Mesh(rockGeo, rockMat);
+    m.position.set(x, seabed(x, z) + s * 0.32, z);
+    m.scale.set(s * (0.8 + Math.random() * 0.6), s * (0.62 + Math.random() * 0.8), s);
+    m.rotation.set(Math.random(), Math.random() * 6.28, Math.random());
+    m.receiveShadow = true;
+    scene.add(m);
+    if (r < ARENA) reef.push({ x, z, y: m.position.y + s * 0.3, r: s });
+
+    // a fan of coral fingers on a third of the rocks
+    if (Math.random() < 0.34) {
+      const n = 2 + (Math.random() * 3 | 0);
+      for (let k = 0; k < n; k++) {
+        const h = 1.2 + Math.random() * 2.4;
+        const f = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.22, h, 5), coralMat);
+        f.position.set(
+          x + (Math.random() - 0.5) * s * 1.4,
+          seabed(x, z) + h * 0.45,
+          z + (Math.random() - 0.5) * s * 1.4,
+        );
+        f.rotation.set((Math.random() - 0.5) * 0.5, 0, (Math.random() - 0.5) * 0.5);
+        scene.add(f);
+      }
+    }
+  }
+}
+
+/* ---- sea weed: one instanced blade, swayed in the vertex shader -------- */
+const sway = { value: 0 };
+{
+  const COUNT = 700;
+  const blade = new THREE.PlaneGeometry(0.62, 1, 1, 5);
+  blade.translate(0, 0.5, 0);                       // grow up from the root
+  {
+    const p = blade.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setX(i, p.getX(i) * (1 - 0.72 * p.getY(i)));
+  }
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xffffff, side: THREE.DoubleSide, flatShading: true,
+  });
+  mat.onBeforeCompile = (s) => {
+    s.uniforms.uTime = sway;
+    s.vertexShader = 'uniform float uTime;\nattribute float aPhase;\n' + s.vertexShader
+      .replace('#include <begin_vertex>', [
+        '#include <begin_vertex>',
+        'float lean = transformed.y * transformed.y;',
+        'transformed.x += sin(uTime * 1.25 + aPhase) * 0.34 * lean;',
+        'transformed.z += cos(uTime * 0.95 + aPhase * 1.7) * 0.26 * lean;',
+      ].join('\n'));
+  };
+  const mesh = new THREE.InstancedMesh(blade, mat, COUNT);
+  const phase = new Float32Array(COUNT);
+  const dummy = new THREE.Object3D();
+  const c = new THREE.Color();
+  let patchX = 0, patchZ = 0, patchLeft = 0;
+  for (let i = 0; i < COUNT; i++) {
+    if (patchLeft-- <= 0) {                         // weed grows in beds
+      const a = Math.random() * Math.PI * 2;
+      const r = 10 + Math.pow(Math.random(), 0.6) * (ARENA + 30);
+      patchX = Math.cos(a) * r; patchZ = Math.sin(a) * r;
+      patchLeft = 4 + (Math.random() * 9 | 0);
+    }
+    const x = patchX + (Math.random() - 0.5) * 9;
+    const z = patchZ + (Math.random() - 0.5) * 9;
+    dummy.position.set(x, seabed(x, z) - 0.2, z);
+    dummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
+    dummy.scale.set(0.7 + Math.random() * 0.9, 2.4 + Math.random() * 4.6, 1);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+    c.setHSL(0.29 + Math.random() * 0.1, 0.42, 0.22 + Math.random() * 0.16);
+    mesh.setColorAt(i, c);
+    phase[i] = Math.random() * 6.28;
+  }
+  mesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
+  mesh.instanceMatrix.needsUpdate = true;
+  scene.add(mesh);
+}
+
+/* ---- power crystals ---------------------------------------------------- */
+const CRYSTAL_TINTS = [0x5fe3ff, 0xb98cff, 0x63ffc4];
+const crystals = [];
+{
+  const geo = new THREE.OctahedronGeometry(1, 0);
+  for (let i = 0; i < 26; i++) {
+    const tint = CRYSTAL_TINTS[i % CRYSTAL_TINTS.length];
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({
+      color: tint, emissive: tint, emissiveIntensity: 0.55,
+      flatShading: true, transparent: true, opacity: 0.88,
+    });
+    const n = 3 + (Math.random() * 3 | 0);
+    for (let k = 0; k < n; k++) {
+      const m = new THREE.Mesh(geo, mat);
+      const s = 0.34 + Math.random() * 0.5;
+      m.position.set((Math.random() - 0.5) * 1.1, (Math.random() - 0.3) * 1.0, (Math.random() - 0.5) * 1.1);
+      m.scale.set(s, s * (1.5 + Math.random()), s);
+      m.rotation.set(Math.random(), Math.random(), Math.random());
+      grp.add(m);
+    }
+    grp.add(glow(tint, 4.2));
+    scene.add(grp);
+    crystals.push({ group: grp, spin: 0.3 + Math.random() * 0.5, phase: Math.random() * 6.28, live: true });
+  }
+}
+
+function placeCrystal(c) {
+  // crystals grow out of the reef, so put them on or beside a rock
+  const anchor = reef.length ? reef[(Math.random() * reef.length) | 0] : null;
+  let x, z;
+  if (anchor && Math.random() < 0.75) {
+    x = anchor.x + (Math.random() - 0.5) * 7;
+    z = anchor.z + (Math.random() - 0.5) * 7;
+  } else {
+    const a = Math.random() * Math.PI * 2;
+    const r = 12 + Math.random() * (ARENA - 20);
+    x = Math.cos(a) * r; z = Math.sin(a) * r;
+  }
+  c.group.position.set(x, seabed(x, z) + 1.1 + Math.random() * 2.6, z);
+  c.group.visible = true;
+  c.live = true;
+}
+for (const c of crystals) placeCrystal(c);
+
+/* --------------------------------------------------------- the robot shark
+   The hull is a chain of 14 nested nodes running nose to tail. Each node
+   carries one armour plate spanning the gap to the next node, so a sine wave
+   walked down the chain - each node lagging the one in front - undulates the
+   whole body and whips the tail, exactly the way the real animal swims. Fins
+   hang off the nodes they belong to, so they inherit that motion for free. */
+const SEG = 14;
+const NODE_LEN = 0.62;
+const BACK = new THREE.Color('#3d5b72');
+const BELLY = new THREE.Color('#d9e7ef');
+
+// hull half-width down the body, sampled and lerped: nose, shoulders, then a
+// long taper into the tail
+const PROFILE = [
+  [0.00, 0.34], [0.08, 0.74], [0.18, 0.95], [0.32, 0.91],
+  [0.45, 0.74], [0.60, 0.53], [0.75, 0.34], [0.88, 0.21], [1.00, 0.12],
+];
+function hullRadius(u) {
+  for (let i = 1; i < PROFILE.length; i++) {
+    if (u <= PROFILE[i][0]) {
+      const [a, ra] = PROFILE[i - 1], [b, rb] = PROFILE[i];
+      return THREE.MathUtils.lerp(ra, rb, (u - a) / (b - a));
+    }
+  }
+  return PROFILE[PROFILE.length - 1][1];
+}
+// the cross-section goes from wide-and-flat at the head to tall-and-thin at
+// the tail, which is what gives the peduncle its blade shape
+const crossX = (u) => THREE.MathUtils.lerp(1.06, 0.42, u);
+const crossY = (u) => THREE.MathUtils.lerp(0.94, 1.55, u);
+
+function finGeo(pts, thick) {
+  const shape = new THREE.Shape();
+  shape.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
+  g.translate(0, 0, -thick / 2);
+  return g;
+}
+// upright fin: shape drawn as (rearward, up), thickness across the body
+const uprightFin = (pts, thick) => finGeo(pts, thick).rotateY(Math.PI / 2);
+// flat fin: shape drawn as (outward, forward), thickness vertical
+const flatFin = (pts, thick) => finGeo(pts, thick).rotateX(Math.PI / 2);
+
+const hullMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const jointMat = new THREE.MeshLambertMaterial({ color: 0x27323d, flatShading: true });
+const finMat = new THREE.MeshLambertMaterial({ color: 0x47606f, flatShading: true });
+const trimMat = new THREE.MeshLambertMaterial({
+  color: 0x1f2a33, emissive: 0x2ad8c8, emissiveIntensity: 0.9, flatShading: true,
+});
+const jawMat = new THREE.MeshLambertMaterial({ color: 0x3a4a56, flatShading: true });
+const toothMat = new THREE.MeshLambertMaterial({ color: 0xf2f6f4, flatShading: true });
+
+const shark = new THREE.Group();
+shark.rotation.order = 'YXZ';
+scene.add(shark);
+const hull = new THREE.Group();     // takes the stun shake, so the hull alone jolts
+hull.position.z = 3.4;              // origin sits mid-body, not on the nose
+shark.add(hull);
+
+const spine = [];
+{
+  let parent = hull;
+  for (let i = 0; i < SEG; i++) {
+    const node = new THREE.Group();
+    node.position.z = i === 0 ? 0 : -NODE_LEN;
+    parent.add(node);
+    spine.push(node);
+    parent = node;
+  }
+
+  for (let i = 0; i < SEG - 1; i++) {
+    const u0 = i / (SEG - 1), u1 = (i + 1) / (SEG - 1);
+    const r0 = hullRadius(u0), r1 = hullRadius(u1);
+    // radiusTop lands on +Z once the cylinder is laid along the body axis
+    const g = new THREE.CylinderGeometry(r0, r1, NODE_LEN * 0.9, 9, 1);
+    g.rotateX(Math.PI / 2);
+    g.scale((crossX(u0) + crossX(u1)) / 2, (crossY(u0) + crossY(u1)) / 2, 1);
+    g.translate(0, 0, -NODE_LEN / 2);
+
+    const p = g.attributes.position;
+    const col = [];
+    const c = new THREE.Color();
+    for (let v = 0; v < p.count; v++) {
+      const t = clamp(p.getY(v) / (r0 * 1.05) * 0.5 + 0.5, 0, 1);
+      c.copy(BELLY).lerp(BACK, t * t);
+      col.push(c.r, c.g, c.b);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const m = new THREE.Mesh(g, hullMat);
+    m.castShadow = true;
+    spine[i].add(m);
+
+    // dark collar in the gap between plates
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(r0 * 0.98, 0.055, 4, 10), jointMat,
+    );
+    ring.scale.set(crossX(u0), crossY(u0), 1);
+    spine[i].add(ring);
+  }
+
+  // running lights down both flanks
+  for (const i of [3, 5, 7, 9]) {
+    const u = i / (SEG - 1), r = hullRadius(u);
+    for (const sx of [-1, 1]) {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.34), trimMat);
+      lamp.position.set(sx * r * crossX(u) * 0.95, -0.05, -NODE_LEN * 0.4);
+      spine[i].add(lamp);
+    }
+  }
+}
+
+/* ---- head: snout, jaws, big optics ------------------------------------ */
+const jaw = new THREE.Group();
+const eyes = [];
+{
+  const head = spine[0];
+
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.52, 10, 8), hullMat);
+  {
+    const p = snout.geometry.attributes.position;
+    const col = [];
+    const c = new THREE.Color();
+    for (let v = 0; v < p.count; v++) {
+      const t = clamp(p.getY(v) / 0.46 * 0.5 + 0.5, 0, 1);
+      c.copy(BELLY).lerp(BACK, t * t);
+      col.push(c.r, c.g, c.b);
+    }
+    snout.geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  }
+  snout.scale.set(1.12, 0.86, 1.5);
+  snout.position.set(0, 0.06, 0.34);
+  snout.castShadow = true;
+  head.add(snout);
+
+  // a dark gape so the open mouth does not read as a hole in the hull
+  const gape = new THREE.Mesh(
+    new THREE.BoxGeometry(0.78, 0.34, 0.6),
+    new THREE.MeshBasicMaterial({ color: 0x150d12 }),
+  );
+  gape.position.set(0, -0.2, 0.62);
+  head.add(gape);
+
+  const teeth = (grp, y, dir) => {
+    for (let i = 0; i < 9; i++) {
+      const t = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.2, 4), toothMat);
+      const a = (i / 8 - 0.5) * 1.5;
+      t.position.set(Math.sin(a) * 0.42, y, 0.86 - Math.abs(Math.sin(a)) * 0.2);
+      t.rotation.x = dir > 0 ? Math.PI : 0;
+      t.rotation.z = -a * 0.35;
+      grp.add(t);
+    }
+  };
+
+  // fixed upper jaw
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.16, 0.86), jawMat);
+  upper.position.set(0, -0.08, 0.6);
+  upper.rotation.x = 0.08;
+  head.add(upper);
+  teeth(head, -0.13, 1);
+
+  // hinged lower jaw: the strike swings this open
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.8), jawMat);
+  lower.position.set(0, -0.31, 0.38);
+  jaw.add(lower);
+  teeth(jaw, -0.24, 0);
+  jaw.position.set(0, 0, 0.1);
+  head.add(jaw);
+
+  // the big eyes of the brief: a dark socket, a wide lens, a live glow
+  for (const sx of [-1, 1]) {
+    const grp = new THREE.Group();
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.31, 10, 8), jointMat);
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8),
+      new THREE.MeshLambertMaterial({ color: 0x0b1520, emissive: 0x1a6f8a, emissiveIntensity: 0.6 }));
+    lens.position.z = 0.09;
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0x8ef4ff }));
+    iris.position.z = 0.22;
+    const halo = glow(0x7fe9ff, 1.25);
+    halo.position.z = 0.24;
+    grp.add(socket, lens, iris, halo);
+    grp.position.set(sx * 0.52, 0.22, 0.44);
+    grp.rotation.y = sx * 0.55;
+    head.add(grp);
+    eyes.push({ group: grp, iris, halo });
+  }
+}
+
+/* ---- fins and thrusters ------------------------------------------------ */
+const pectorals = [];
+const thrusterGlows = [];
+{
+  // dorsal
+  const dorsal = new THREE.Mesh(
+    uprightFin([[-0.45, 0], [0.15, 1.65], [1.25, 1.35], [1.45, 0.05]], 0.13), finMat);
+  dorsal.position.set(0, hullRadius(3 / (SEG - 1)) * 0.85, -0.1);
+  dorsal.castShadow = true;
+  spine[3].add(dorsal);
+
+  // a small second dorsal further back
+  const dorsal2 = new THREE.Mesh(
+    uprightFin([[-0.2, 0], [0.1, 0.52], [0.55, 0.42], [0.6, 0.02]], 0.08), finMat);
+  dorsal2.position.set(0, hullRadius(8 / (SEG - 1)) * 0.9, 0);
+  spine[8].add(dorsal2);
+
+  // pectorals: big, and they roll with the turn
+  const pecGeo = flatFin([[0, 0.5], [1.65, -0.4], [1.8, -1.0], [0.15, -0.8]], 0.09);
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    const fin = new THREE.Mesh(pecGeo, finMat);
+    fin.castShadow = true;
+    fin.scale.x = sx;
+    pivot.add(fin);
+    pivot.position.set(sx * hullRadius(2 / (SEG - 1)) * 0.8, -0.22, -0.1);
+    pivot.rotation.z = sx * 0.16;              // a little droop, like the real fin
+    spine[2].add(pivot);
+    pectorals.push({ pivot, sx });
+  }
+
+  // pelvic pair, smaller and angled down
+  const pelGeo = flatFin([[0, 0.3], [0.8, -0.2], [0.9, -0.55], [0.1, -0.5]], 0.07);
+  for (const sx of [-1, 1]) {
+    const fin = new THREE.Mesh(pelGeo, finMat);
+    fin.scale.x = sx;
+    fin.position.set(sx * hullRadius(8 / (SEG - 1)) * 0.7, -0.2, 0);
+    fin.rotation.z = sx * 0.25;
+    spine[8].add(fin);
+  }
+
+  // caudal: a tall upper lobe and a short lower one, on the last node
+  const tail = spine[SEG - 1];
+  const upper = new THREE.Mesh(
+    uprightFin([[-0.1, 0], [0.55, 0.12], [1.55, 1.95], [1.2, 0.72], [0.35, 0.06]], 0.1), finMat);
+  const lower = new THREE.Mesh(
+    uprightFin([[-0.1, 0], [0.55, -0.1], [0.95, -1.05], [0.62, -0.35]], 0.1), finMat);
+  upper.castShadow = true;
+  tail.add(upper, lower);
+
+  // water-jet nacelles: they flare on a lunge
+  for (const sx of [-1, 1]) {
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.62, 8), jointMat);
+    pod.rotation.x = Math.PI / 2;
+    pod.position.set(sx * 0.62, -0.12, -0.2);
+    spine[4].add(pod);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 4, 10), trimMat);
+    ring.position.set(sx * 0.62, -0.12, -0.5);
+    spine[4].add(ring);
+    const flare = glow(0x63f0ff, 1.1);
+    flare.position.set(sx * 0.62, -0.12, -0.62);
+    spine[4].add(flare);
+    thrusterGlows.push(flare);
+  }
+}
+
+/* -------------------------------------------------------------- the reef
+   Everything the shark can chase lives in `prey`; the jellyfish are kept
+   apart because they are a hazard rather than a catch. */
+const prey = [];
+const V = new THREE.Vector3();
+const V2 = new THREE.Vector3();
+const mouth = new THREE.Vector3();   // kept out of the prey scratch vectors
+
+function seaFloorAt(x, z) { return seabed(x, z); }
+function ringSpot(min, max) {
+  const a = Math.random() * Math.PI * 2;
+  const r = min + Math.random() * (max - min);
+  return [Math.cos(a) * r, Math.sin(a) * r];
+}
+
+/* ---- shoals ------------------------------------------------------------ */
+const FISH_COLORS = [0xffae3b, 0xf3efe0, 0x59b4e0, 0xe4645a, 0xf7d45c];
+const fishGeo = new THREE.SphereGeometry(0.5, 7, 5);
+const fishTailGeo = uprightFin([[0, 0], [0.62, 0.55], [0.85, 0], [0.62, -0.55]], 0.04);
+const fishDorsalGeo = uprightFin([[0, 0], [0.18, 0.34], [0.5, 0.06]], 0.04);
+
+function makeFish(color, scale) {
+  const mat = new THREE.MeshLambertMaterial({ color, flatShading: true });
+  const grp = new THREE.Group();
+  const body = new THREE.Mesh(fishGeo, mat);
+  body.scale.set(0.52, 0.78, 1.45);
+  const tail = new THREE.Group();
+  tail.position.z = -0.66;
+  tail.add(new THREE.Mesh(fishTailGeo, mat));
+  const dorsal = new THREE.Mesh(fishDorsalGeo, mat);
+  dorsal.position.set(0, 0.34, -0.1);
+  grp.add(body, tail, dorsal);
+  grp.scale.setScalar(scale);
+  grp.userData.tail = tail;
+  return grp;
+}
+
+for (let s = 0; s < 8; s++) {
+  const color = FISH_COLORS[s % FISH_COLORS.length];
+  const [hx, hz] = ringSpot(16, ARENA - 24);
+  const home = new THREE.Vector3(hx, seabed(hx, hz) + 5 + Math.random() * 16, hz);
+  for (let i = 0; i < 7; i++) {
+    const g = makeFish(color, 0.75 + Math.random() * 0.4);
+    scene.add(g);
+    const p = {
+      kind: 'fish', group: g, pos: g.position, r: 0.9, points: 40,
+      home: home.clone(), orbit: 3 + Math.random() * 5, tilt: (Math.random() - 0.5) * 3,
+      phase: Math.random() * 6.28, rate: 0.35 + Math.random() * 0.4,
+      vel: new THREE.Vector3(), alive: true, respawn: 0, scare: 0,
+    };
+    g.position.copy(home).add(new THREE.Vector3(
+      (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 8));
+    prey.push(p);
+  }
+}
+
+/* ---- crabs ------------------------------------------------------------- */
+function makeCrab() {
+  const shellMat = new THREE.MeshLambertMaterial({ color: 0xd2563c, flatShading: true });
+  const limbMat = new THREE.MeshLambertMaterial({ color: 0xa33c2c, flatShading: true });
+  const grp = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.62, 8, 6), shellMat);
+  shell.scale.set(1.25, 0.55, 0.95);
+  shell.position.y = 0.34;
+  shell.castShadow = true;
+  grp.add(shell);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0x14232a }));
+    eye.position.set(sx * 0.22, 0.62, 0.34);
+    grp.add(eye);
+    const claw = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.2, 0.28), limbMat);
+    claw.position.set(sx * 0.92, 0.3, 0.42);
+    claw.rotation.y = sx * 0.4;
+    grp.add(claw);
+  }
+  const legs = [];
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.08), limbMat);
+      leg.geometry.translate(0.31, 0, 0);       // hinge at the shell
+      leg.position.set(sx * 0.5, 0.26, (i - 1) * 0.36);
+      leg.scale.x = sx;
+      grp.add(leg);
+      legs.push({ leg, phase: i * 1.1 + (sx > 0 ? 0 : 0.7) });
+    }
+  }
+  grp.userData.legs = legs;
+  return grp;
+}
+
+for (let i = 0; i < 11; i++) {
+  const g = makeCrab();
+  scene.add(g);
+  const [x, z] = ringSpot(14, ARENA - 18);
+  g.position.set(x, seabed(x, z) + 0.1, z);
+  prey.push({
+    kind: 'crab', group: g, pos: g.position, r: 1.1, points: 65,
+    heading: Math.random() * 6.28, speed: 1.4 + Math.random(),
+    phase: Math.random() * 6.28, alive: true, respawn: 0, scare: 0,
+  });
+}
+
+/* ---- octopuses --------------------------------------------------------- */
+function makeOctopus() {
+  const skin = new THREE.MeshLambertMaterial({ color: 0xa5588f, flatShading: true });
+  const grp = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.85, 10, 8), skin);
+  head.scale.set(1, 1.2, 1);
+  head.position.y = 0.9;
+  head.castShadow = true;
+  grp.add(head);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6),
+      new THREE.MeshLambertMaterial({ color: 0xf6e9c8 }));
+    eye.position.set(sx * 0.36, 1.05, 0.66);
+    const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.05),
+      new THREE.MeshBasicMaterial({ color: 0x160f14 }));
+    pupil.position.set(sx * 0.36, 1.05, 0.83);
+    grp.add(eye, pupil);
+  }
+  const arms = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const root = new THREE.Group();
+    root.position.set(Math.cos(a) * 0.5, 0.42, Math.sin(a) * 0.5);
+    root.rotation.y = -a;
+    grp.add(root);
+    const joints = [];
+    let parent = root;
+    for (let k = 0; k < 4; k++) {
+      const j = new THREE.Group();
+      if (k > 0) j.position.y = -0.42;
+      const seg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16 - k * 0.033, 0.19 - k * 0.033, 0.44, 6), skin);
+      seg.position.y = -0.22;
+      j.add(seg);
+      parent.add(j);
+      parent = j;
+      joints.push(j);
+    }
+    arms.push({ joints, phase: a });
+  }
+  grp.userData.arms = arms;
+  return grp;
+}
+
+for (let i = 0; i < 6; i++) {
+  const g = makeOctopus();
+  scene.add(g);
+  const [x, z] = ringSpot(18, ARENA - 22);
+  g.position.set(x, seabed(x, z) + 1.1, z);
+  prey.push({
+    kind: 'octopus', group: g, pos: g.position, r: 1.5, points: 95,
+    heading: Math.random() * 6.28, jet: 0, phase: Math.random() * 6.28,
+    vel: new THREE.Vector3(), alive: true, respawn: 0, scare: 0,
+  });
+}
+
+/* ---- jellyfish: hazards, not catches ----------------------------------- */
+const jellies = [];
+{
+  const bellGeo = new THREE.SphereGeometry(0.9, 12, 7, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  const tentGeo = new THREE.CylinderGeometry(0.035, 0.015, 2.2, 4);
+  tentGeo.translate(0, -1.1, 0);
+  for (let i = 0; i < 13; i++) {
+    const tint = i % 2 ? 0xc07cff : 0xff8ad0;
+    const bellMat = new THREE.MeshLambertMaterial({
+      color: tint, emissive: tint, emissiveIntensity: 0.35,
+      transparent: true, opacity: 0.55, side: THREE.DoubleSide, flatShading: true,
+    });
+    const grp = new THREE.Group();
+    const bell = new THREE.Mesh(bellGeo, bellMat);
+    grp.add(bell, glow(tint, 3.4));
+    const tents = [];
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2;
+      const t = new THREE.Mesh(tentGeo, bellMat);
+      t.position.set(Math.cos(a) * 0.5, 0, Math.sin(a) * 0.5);
+      grp.add(t);
+      tents.push({ mesh: t, phase: a });
+    }
+    const [x, z] = ringSpot(12, ARENA - 10);
+    grp.position.set(x, seabed(x, z) + 6 + Math.random() * 22, z);
+    scene.add(grp);
+    jellies.push({
+      group: grp, bell, tents, r: 1.5,
+      phase: Math.random() * 6.28, rise: 0.4 + Math.random() * 0.5,
+      drift: Math.random() * 6.28,
+    });
+  }
+}
+
+/* ------------------------------------------------------------- particles */
+const shardGeo = new THREE.TetrahedronGeometry(0.28, 0);
+const shardMat = new THREE.MeshLambertMaterial({ color: 0xbfeeff, flatShading: true });
+const shards = [];
+for (let i = 0; i < 54; i++) {
+  const m = new THREE.Mesh(shardGeo, shardMat.clone());
+  m.visible = false;
+  scene.add(m);
+  shards.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+}
+let shardCursor = 0;
+function burst(at, color, n) {
+  for (let i = 0; i < n; i++) {
+    const s = shards[shardCursor = (shardCursor + 1) % shards.length];
+    s.mesh.position.copy(at);
+    s.mesh.visible = true;
+    s.mesh.material.color.set(color);
+    s.life = 0.7 + Math.random() * 0.4;
+    s.vel.set(Math.random() - 0.5, Math.random() - 0.4, Math.random() - 0.5)
+      .normalize().multiplyScalar(3 + Math.random() * 5);
+    s.spin.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+  }
+}
+
+const bubbleGeo = new THREE.SphereGeometry(0.085, 6, 5);
+const bubbleMat = new THREE.MeshLambertMaterial({
+  color: 0xdff6ff, transparent: true, opacity: 0.32, emissive: 0x244a58,
+});
+const bubbles = [];
+for (let i = 0; i < 90; i++) {
+  const m = new THREE.Mesh(bubbleGeo, bubbleMat);
+  m.visible = false;
+  scene.add(m);
+  bubbles.push({ mesh: m, life: 0, vel: new THREE.Vector3() });
+}
+let bubbleCursor = 0;
+function bubble(at, spread, up) {
+  const b = bubbles[bubbleCursor = (bubbleCursor + 1) % bubbles.length];
+  b.mesh.position.copy(at);
+  b.mesh.position.x += (Math.random() - 0.5) * spread;
+  b.mesh.position.y += (Math.random() - 0.5) * spread;
+  b.mesh.position.z += (Math.random() - 0.5) * spread;
+  b.mesh.scale.setScalar(0.55 + Math.random() * 0.9);
+  b.mesh.visible = true;
+  b.life = 1.6 + Math.random() * 1.6;
+  b.vel.set((Math.random() - 0.5) * 0.6, up + Math.random() * 0.8, (Math.random() - 0.5) * 0.6);
+}
+
+const inks = [];
+for (let i = 0; i < 6; i++) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: GLOW, color: 0x120a18, transparent: true, opacity: 0.9, depthWrite: false,
+  }));
+  s.visible = false;
+  scene.add(s);
+  inks.push({ sprite: s, life: 0 });
+}
+let inkCursor = 0;
+function inkPuff(at) {
+  const k = inks[inkCursor = (inkCursor + 1) % inks.length];
+  k.sprite.position.copy(at);
+  k.sprite.scale.setScalar(1.5);
+  k.sprite.material.opacity = 0.85;
+  k.sprite.visible = true;
+  k.life = 1.5;
+}
+
+// ambient bubble vents dotted round the floor
+const vents = [];
+for (let i = 0; i < 9; i++) {
+  const [x, z] = ringSpot(12, ARENA);
+  vents.push({ x, y: seabed(x, z) + 0.2, z, t: Math.random() * 2 });
+}
+
+/* ----------------------------------------------------------------- audio
+   Synthesized, so the page still loads nothing but three.js: a wet chomp for
+   the jaws, a two-note chime for a crystal, a buzz for a jellyfish, and a
+   low filtered rumble under all of it for the water. */
+const audio = { ctx: null, master: null, noise: null, muted: false, hum: null };
+try { audio.muted = localStorage.getItem('shark-muted') === '1'; } catch (e) { /* ignore */ }
+
+function initAudio() {
+  if (audio.ctx) {
+    if (audio.ctx.state === 'suspended') audio.ctx.resume();
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;                      // no Web Audio: the dive just runs quiet
+  audio.ctx = new AC();
+  audio.master = audio.ctx.createGain();
+  audio.master.gain.value = audio.muted ? 0 : 0.7;
+  audio.master.connect(audio.ctx.destination);
+
+  const n = Math.floor(audio.ctx.sampleRate * 0.5);
+  const buf = audio.ctx.createBuffer(1, n, audio.ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  audio.noise = buf;
+
+  // the sea itself: a long noise loop under a heavy low-pass
+  const loopLen = Math.floor(audio.ctx.sampleRate * 3);
+  const loop = audio.ctx.createBuffer(1, loopLen, audio.ctx.sampleRate);
+  const ld = loop.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < loopLen; i++) {
+    last = last * 0.986 + (Math.random() * 2 - 1) * 0.06;    // brown-ish noise
+    ld[i] = last;
+  }
+  const src = audio.ctx.createBufferSource();
+  src.buffer = loop;
+  src.loop = true;
+  const lp = audio.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 220;
+  const g = audio.ctx.createGain();
+  g.gain.value = 0.9;
+  src.connect(lp).connect(g).connect(audio.master);
+  src.start();
+  audio.hum = g;
+}
+
+const ready = () => audio.ctx && !audio.muted && audio.noise;
+
+function chomp() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 1.5 + Math.random() * 0.4;
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(1500, t);
+  bp.frequency.exponentialRampToValueAtTime(320, t + 0.13);
+  bp.Q.value = 1.1;
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.7, t);
+  ng.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  src.connect(bp).connect(ng).connect(audio.master);
+  src.start(t);
+  src.stop(t + 0.2);
+
+  const osc = c.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(190, t);
+  osc.frequency.exponentialRampToValueAtTime(55, t + 0.14);
+  const og = c.createGain();
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.exponentialRampToValueAtTime(0.55, t + 0.01);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  osc.connect(og).connect(audio.master);
+  osc.start(t);
+  osc.stop(t + 0.24);
+}
+
+function chime(step) {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const base = 660 * Math.pow(2, Math.min(step, 8) / 12);
+  for (let i = 0; i < 2; i++) {
+    const osc = c.createOscillator();
+    osc.type = i ? 'triangle' : 'sine';
+    osc.frequency.setValueAtTime(base * (i ? 1.5 : 1), t + i * 0.07);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t + i * 0.07);
+    g.gain.exponentialRampToValueAtTime(i ? 0.14 : 0.24, t + i * 0.07 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.07 + 0.42);
+    osc.connect(g).connect(audio.master);
+    osc.start(t + i * 0.07);
+    osc.stop(t + i * 0.07 + 0.45);
+  }
+}
+
+function zap() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(420, t);
+  osc.frequency.exponentialRampToValueAtTime(70, t + 0.35);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+  const lfo = c.createOscillator();
+  lfo.type = 'square';
+  lfo.frequency.value = 34;
+  const lg = c.createGain();
+  lg.gain.value = 0.25;
+  lfo.connect(lg).connect(g.gain);
+  osc.connect(g).connect(audio.master);
+  osc.start(t); lfo.start(t);
+  osc.stop(t + 0.42); lfo.stop(t + 0.42);
+}
+
+function dryClick() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 2.6;
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 2200;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.22, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  src.connect(hp).connect(g).connect(audio.master);
+  src.start(t);
+  src.stop(t + 0.07);
+}
+
+function toggleMute() {
+  audio.muted = !audio.muted;
+  if (audio.master) audio.master.gain.value = audio.muted ? 0 : 0.7;
+  const b = $('mute');
+  b.classList.toggle('off', audio.muted);
+  b.setAttribute('aria-pressed', audio.muted ? 'true' : 'false');
+  b.setAttribute('aria-label', audio.muted ? 'Sound off' : 'Sound on');
+  try { localStorage.setItem('shark-muted', audio.muted ? '1' : '0'); } catch (e) { /* ignore */ }
+}
+
+/* -------------------------------------------------------------- controls */
+const keys = Object.create(null);
+const touch = { strike: 0 };
+const stick = { x: 0, y: 0 };          // -1..1, centre is rest
+
+addEventListener('keydown', (e) => {
+  if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.toLowerCase() === 'r' && state.phase !== 'idle') startRun();
+  if (e.key.toLowerCase() === 'm') toggleMute();
+  if (state.phase === 'idle' && (e.key === ' ' || e.key === 'Enter')) startRun();
+});
+addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => {
+  for (const k in keys) keys[k] = false;
+  touch.strike = 0;
+  stick.x = stick.y = 0;
+});
+
+if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch-mode');
+for (const btn of document.querySelectorAll('.btn')) {
+  const k = btn.dataset.key;
+  const set = (v) => (e) => {
+    e.preventDefault();
+    touch[k] = v;
+    btn.classList.toggle('down', !!v);
+  };
+  btn.addEventListener('pointerdown', set(1));
+  btn.addEventListener('pointerup', set(0));
+  btn.addEventListener('pointercancel', set(0));
+  btn.addEventListener('pointerleave', set(0));
+}
+
+/* left thumb stick: drag from the base, release springs it back to centre */
+{
+  const base = $('stick'), knob = $('knob');
+  let id = null, cx = 0, cy = 0, limit = 32, spring = 0;
+
+  const place = (dx, dy) => { knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; };
+
+  const move = (e) => {
+    if (id === null || e.pointerId !== id) return;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > limit) { dx = dx / d * limit; dy = dy / d * limit; }
+    place(dx, dy);
+    stick.x = dx / limit;
+    stick.y = dy / limit;
+  };
+
+  const release = (e) => {
+    if (id === null || (e && e.pointerId !== id)) return;
+    id = null;
+    stick.x = stick.y = 0;
+    base.classList.remove('active');
+    base.classList.add('springing');
+    place(0, 0);
+    clearTimeout(spring);
+    spring = setTimeout(() => base.classList.remove('springing'), 200);
+  };
+
+  base.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    id = e.pointerId;
+    const r = base.getBoundingClientRect();
+    cx = r.left + r.width / 2;
+    cy = r.top + r.height / 2;
+    limit = Math.max(18, r.width * 0.34);
+    base.classList.remove('springing');
+    base.classList.add('active');
+    base.setPointerCapture(id);
+    move(e);
+  });
+  base.addEventListener('pointermove', move);
+  base.addEventListener('pointerup', release);
+  base.addEventListener('pointercancel', release);
+  base.addEventListener('lostpointercapture', release);
+}
+
+// dead zone, then rescale so the usable travel still reaches full deflection
+const DEAD = 0.18;
+function axis(v) {
+  const a = Math.abs(v);
+  if (a < DEAD) return 0;
+  return Math.sign(v) * Math.min(1, (a - DEAD) / (1 - DEAD));
+}
+const pick = (k, s) => (Math.abs(k) >= Math.abs(s) ? k : s);
+
+const input = () => ({
+  // push the stick right to bank right, forward to lift the nose
+  turn: pick((keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0),
+             axis(stick.x)),
+  lift: pick((keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0),
+             -axis(stick.y)),
+  strike: !!(keys[' '] || touch.strike),
+});
+
+/* ----------------------------------------------------------------- state */
+const RUN_SECONDS = 180;
+const CRUISE = 13, DASH = 31;
+const TURN_RATE = 1.4, PITCH_RATE = 1.15, PITCH_MAX = 0.62;
+
+const state = {
+  phase: 'idle',           // idle | running | over
+  t: RUN_SECONDS,
+  score: 0, best: 0, catches: 0, gems: 0,
+  chain: 0, chainTimer: 0, bestChain: 0,
+  yaw: 0, pitch: 0, roll: 0, speed: CRUISE,
+  charge: 1, strikeT: 0, strikeHeld: false, jaw: 0,
+  stun: 0, invuln: 0, flash: 0, shake: 0,
+  swim: 0, turnSmooth: 0, bubbleT: 0,
+};
+try { state.best = Number(localStorage.getItem('shark-best') || 0) || 0; } catch (e) { /* ignore */ }
+
+const fwd = new THREE.Vector3(0, 0, 1);
+const camGoal = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+const camUp = new THREE.Vector3(0, 1, 0);
+
+function respawnPrey(p) {
+  if (p.kind === 'fish') {
+    const [x, z] = ringSpot(16, ARENA - 24);
+    p.home.set(x, seabed(x, z) + 5 + Math.random() * 16, z);
+    p.pos.copy(p.home);
+  } else {
+    const [x, z] = ringSpot(14, ARENA - 18);
+    p.pos.set(x, seabed(x, z) + (p.kind === 'crab' ? 0.1 : 1.1), z);
+  }
+  p.alive = true;
+  p.respawn = 0;
+  p.group.visible = true;
+}
+
+function startRun() {
+  initAudio();
+  state.phase = 'running';
+  state.t = RUN_SECONDS;
+  state.score = 0; state.catches = 0; state.gems = 0;
+  state.chain = 0; state.chainTimer = 0; state.bestChain = 0;
+  state.yaw = 0; state.pitch = 0; state.roll = 0; state.speed = CRUISE;
+  state.charge = 1; state.strikeT = 0; state.jaw = 0;
+  state.stun = 0; state.invuln = 0; state.flash = 0; state.shake = 0;
+  shark.position.set(0, 16, -46);
+  for (const p of prey) respawnPrey(p);
+  for (const c of crystals) if (!c.live) placeCrystal(c);
+  $('startCard').hidden = true;
+  $('endCard').hidden = true;
+}
+
+function endRun() {
+  state.phase = 'over';
+  if (state.score > state.best) {
+    state.best = state.score;
+    try { localStorage.setItem('shark-best', String(state.best)); } catch (e) { /* ignore */ }
+  }
+  $('endScore').textContent = state.score;
+  $('endDetail').textContent = state.catches + ' caught · ' + state.gems + ' crystals';
+  $('endTitle').textContent = state.score >= state.best && state.score > 0 ? 'Best dive yet' : 'Surfacing';
+  $('endBest').textContent = 'Best haul ' + state.best
+    + ' · longest chain ×' + Math.max(1, state.bestChain);
+  $('endCard').hidden = false;
+}
+
+function scoreHit(points, at, color) {
+  state.chainTimer = 2.8;
+  state.chain = Math.min(5, state.chain + 1);
+  state.bestChain = Math.max(state.bestChain, state.chain);
+  state.score += points * state.chain;
+  burst(at, color, 7);
+}
+
+function sting(at) {
+  state.stun = 1.15;
+  state.invuln = 1.9;
+  state.chain = 0;
+  state.score = Math.max(0, state.score - 30);
+  state.flash = REDUCED ? 0.35 : 0.85;
+  state.shake = REDUCED ? 0.1 : 0.45;
+  burst(at, 0xc07cff, 6);
+  zap();
+}
+
+/* ------------------------------------------------------------------ step */
+function step(dt, t) {
+  const running = state.phase === 'running';
+  const inp = input();
+  const ctrl = state.stun > 0 ? 0.25 : 1;
+
+  if (running) {
+    state.t -= dt;
+    if (state.t <= 0) { state.t = 0; endRun(); }
+  }
+
+  /* --- swim --------------------------------------------------------- */
+  state.yaw -= inp.turn * TURN_RATE * ctrl * dt;
+  if (Math.abs(inp.lift) > 0.02) state.pitch += inp.lift * PITCH_RATE * ctrl * dt;
+  else state.pitch -= state.pitch * 0.9 * dt;          // noses back to level
+  state.pitch = clamp(state.pitch, -PITCH_MAX, PITCH_MAX);
+  state.turnSmooth += (inp.turn - state.turnSmooth) * Math.min(1, 6 * dt);
+  state.roll += (-state.turnSmooth * 0.5 - state.roll) * Math.min(1, 5 * dt);
+
+  // the harder the stick is pushed, the harder the tail works
+  const push = Math.min(1, Math.hypot(inp.turn, inp.lift));
+  let target = CRUISE * (0.82 + 0.32 * push);
+  if (state.strikeT > 0) target = DASH;
+  if (state.stun > 0) target = 5;
+  state.speed += (target - state.speed) * (1 - Math.exp(-3.4 * dt));
+
+  /* --- the strike --------------------------------------------------- */
+  if (running && inp.strike && !state.strikeHeld) {
+    if (state.charge >= 0.3 && state.strikeT <= 0) {
+      state.strikeT = 0.55;
+      state.charge -= 0.3;
+      chomp();
+      for (let i = 0; i < 6; i++) bubble(shark.position, 1.4, 0.4);
+    } else {
+      dryClick();
+    }
+  }
+  state.strikeHeld = inp.strike;
+  state.strikeT = Math.max(0, state.strikeT - dt);
+  state.charge = Math.min(1, state.charge + 0.21 * dt);
+  state.stun = Math.max(0, state.stun - dt);
+  state.invuln = Math.max(0, state.invuln - dt);
+  state.flash = Math.max(0, state.flash - dt * 1.5);
+  state.shake = Math.max(0, state.shake - dt * 1.2);
+  if (state.chainTimer > 0 && (state.chainTimer -= dt) <= 0) state.chain = 0;
+
+  // the jaws swing wide through the lunge and snap shut behind it
+  const strikeU = state.strikeT / 0.55;
+  state.jaw += ((state.strikeT > 0 ? Math.sin(strikeU * Math.PI) : 0) - state.jaw)
+    * Math.min(1, 14 * dt);
+
+  /* --- position ----------------------------------------------------- */
+  const cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
+  fwd.set(Math.sin(state.yaw) * cp, sp, Math.cos(state.yaw) * cp);
+  shark.position.addScaledVector(fwd, state.speed * dt);
+
+  // soft boundary: past the reef edge the shark is curved back towards home
+  const dist = Math.hypot(shark.position.x, shark.position.z);
+  const strayed = dist > ARENA;
+  if (strayed) {
+    const home = Math.atan2(-shark.position.x, -shark.position.z);
+    let diff = home - state.yaw;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    state.yaw += diff * Math.min(1, (dist - ARENA) / 22) * 1.8 * dt;
+    if (dist > ARENA + 34) {
+      shark.position.x *= (ARENA + 34) / dist;
+      shark.position.z *= (ARENA + 34) / dist;
+    }
+  }
+
+  // the sea floor and the waves both push back
+  const floor = seabed(shark.position.x, shark.position.z) + 1.7;
+  if (shark.position.y < floor) {
+    shark.position.y = floor;
+    state.pitch = Math.max(state.pitch, 0.06);
+    if (running && Math.random() < 0.4) bubble(shark.position, 1.6, 0.6);
+  }
+  if (shark.position.y > SURFACE - 1.6) {
+    shark.position.y = SURFACE - 1.6;
+    state.pitch = Math.min(state.pitch, -0.03);
+  }
+
+  // boulders are solid: slide around them rather than through them
+  for (const o of reef) {
+    if (shark.position.y > o.y + o.r) continue;
+    const dx = shark.position.x - o.x, dz = shark.position.z - o.z;
+    const keep = o.r * 1.15 + 2.2;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < keep * keep) {
+      const d = Math.sqrt(d2) || 0.0001;
+      shark.position.x = o.x + (dx / d) * keep;
+      shark.position.z = o.z + (dz / d) * keep;
+      if (running && Math.random() < 0.3) bubble(shark.position, 1.8, 0.8);
+    }
+  }
+
+  shark.rotation.set(-state.pitch, state.yaw, state.roll);
+
+  /* --- hull motion: the travelling wave down the spine --------------- */
+  const speedU = clamp(state.speed / DASH, 0, 1);
+  state.swim += (3.1 + state.speed * 0.26) * dt;
+  for (let i = 0; i < SEG; i++) {
+    const u = i / (SEG - 1);
+    const amp = (0.012 + 0.085 * u * u) * (0.55 + 0.9 * speedU);
+    spine[i].rotation.y = Math.sin(state.swim - i * 0.55) * amp
+      - state.turnSmooth * 0.045 * (0.3 + u);
+  }
+  jaw.rotation.x = state.jaw * 0.6;
+  for (const p of pectorals) {
+    p.pivot.rotation.z = Math.sin(state.swim * 0.45 + (p.sx > 0 ? 0 : 1.6)) * 0.1
+      - state.turnSmooth * 0.35 * p.sx;
+  }
+  const flare = 0.9 + speedU * 1.2 + state.strikeT * 1.4;
+  for (const g of thrusterGlows) g.scale.setScalar(flare);
+  const eyePulse = state.stun > 0 ? (Math.sin(t * 40) > 0 ? 1.7 : 0.5) : 1 + Math.sin(t * 2) * 0.12;
+  for (const e of eyes) e.halo.scale.setScalar(1.25 * eyePulse);
+
+  hull.position.set(
+    (Math.random() - 0.5) * state.shake,
+    (Math.random() - 0.5) * state.shake,
+    0,
+  );
+
+  // wake bubbles off the nacelles
+  if ((state.bubbleT -= dt) <= 0) {
+    state.bubbleT = 0.12 - speedU * 0.07;
+    V.copy(shark.position).addScaledVector(fwd, -1.4);
+    bubble(V, 0.7, 0.9 + speedU * 2);
+  }
+
+  /* --- catches ------------------------------------------------------- */
+  mouth.copy(shark.position).addScaledVector(fwd, 4.4);     // where the jaws are
+
+  for (const c of crystals) {
+    if (!c.live) continue;
+    c.group.rotation.y += c.spin * dt;
+    c.group.position.y += Math.sin(t * 0.9 + c.phase) * 0.22 * dt;
+    if (running && c.group.position.distanceTo(shark.position) < 2.9) {
+      c.live = false;
+      c.group.visible = false;
+      state.gems++;
+      scoreHit(15, c.group.position, 0x8ef4ff);
+      chime(state.chain * 2);
+      setTimeout(() => placeCrystal(c), 4000 + Math.random() * 4000);
+    }
+  }
+
+  for (const p of prey) {
+    if (!p.alive) {
+      if ((p.respawn -= dt) <= 0) respawnPrey(p);
+      continue;
+    }
+    if (running && state.strikeT > 0.1 && mouth.distanceTo(p.pos) < p.r + 1.8) {
+      p.alive = false;
+      p.group.visible = false;
+      p.respawn = 5 + Math.random() * 5;
+      state.catches++;
+      scoreHit(p.points, p.pos, p.kind === 'crab' ? 0xff9a6b : 0xbfeeff);
+      chime(state.chain * 2 + 3);
+      if (p.kind === 'octopus') inkPuff(p.pos);
+      continue;
+    }
+    updatePrey(p, dt, t, running);
+  }
+
+  for (const j of jellies) {
+    updateJelly(j, dt, t);
+    if (running && state.invuln <= 0 && j.group.position.distanceTo(shark.position) < j.r + 1.6) {
+      sting(j.group.position);
+    }
+  }
+
+  /* --- scenery ------------------------------------------------------- */
+  sway.value = t;
+  for (const s of shafts) s.mesh.rotation.z = s.tilt + Math.sin(t * 0.25 + s.phase) * 0.06;
+  {
+    const p = waves.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = waveBase[i * 3], z = waveBase[i * 3 + 2];
+      p.setY(i, Math.sin(x * 0.06 + t * 1.1) * 0.9 + Math.cos(z * 0.048 + t * 0.8) * 0.8);
+    }
+    p.needsUpdate = true;
+  }
+  for (const v of vents) {
+    if ((v.t -= dt) <= 0) {
+      v.t = 0.5 + Math.random() * 1.6;
+      V.set(v.x, v.y, v.z);
+      if (V.distanceTo(shark.position) < 90) bubble(V, 0.5, 2.2);
+    }
+  }
+
+  for (const s of shards) {
+    if (s.life <= 0) continue;
+    s.life -= dt;
+    s.vel.multiplyScalar(1 - 2.2 * dt);
+    s.vel.y += 1.1 * dt;                     // scraps float rather than fall
+    s.mesh.position.addScaledVector(s.vel, dt);
+    s.mesh.rotation.x += s.spin.x * dt;
+    s.mesh.rotation.y += s.spin.y * dt;
+    s.mesh.scale.setScalar(Math.max(0.05, s.life));
+    if (s.life <= 0) s.mesh.visible = false;
+  }
+  for (const b of bubbles) {
+    if (b.life <= 0) continue;
+    b.life -= dt;
+    b.vel.x += Math.sin(t * 3 + b.mesh.position.y) * 0.4 * dt;
+    b.mesh.position.addScaledVector(b.vel, dt);
+    if (b.life <= 0 || b.mesh.position.y > SURFACE - 0.4) { b.life = 0; b.mesh.visible = false; }
+  }
+  for (const k of inks) {
+    if (k.life <= 0) continue;
+    k.life -= dt;
+    k.sprite.scale.setScalar(k.sprite.scale.x + 6 * dt);
+    k.sprite.material.opacity = Math.max(0, k.life / 1.5) * 0.85;
+    if (k.life <= 0) k.sprite.visible = false;
+  }
+
+  /* --- camera: a chase rig that swings wide when the shark lunges ---- */
+  const back = 12.5 + state.speed * 0.2;
+  camGoal.copy(shark.position).addScaledVector(fwd, -back);
+  camGoal.y += 5.3 - state.pitch * 3.6;
+  const camFloor = seabed(camGoal.x, camGoal.z) + 1.4;
+  if (camGoal.y < camFloor) camGoal.y = camFloor;
+  const k = 1 - Math.exp(-7 * dt);
+  camera.position.lerp(camGoal, k);
+  camLook.lerp(V.copy(shark.position).addScaledVector(fwd, 10), k);
+  camUp.lerp(V.set(Math.sin(state.roll) * 0.45, 1, 0).normalize(), k).normalize();
+  camera.up.copy(camUp);
+  camera.lookAt(camLook);
+  const fov = 58 + speedU * 9 + state.strikeT * 6;
+  if (Math.abs(camera.fov - fov) > 0.01) {
+    camera.fov += (fov - camera.fov) * k;
+    camera.updateProjectionMatrix();
+  }
+
+  sun.position.copy(shark.position).add(V.set(26, 80, 18));
+  sun.target.position.copy(shark.position);
+  sun.target.updateMatrixWorld();
+
+  $('warn').classList.toggle('on', running && strayed);
+  $('flash').style.opacity = state.flash.toFixed(3);
+}
+
+/* --------------------------------------------------------- reef creatures */
+function updatePrey(p, dt, t, running) {
+  const toShark = V.copy(shark.position).sub(p.pos);
+  const near = toShark.length();
+
+  if (p.kind === 'fish') {
+    const a = t * p.rate + p.phase;
+    V2.set(
+      p.home.x + Math.cos(a) * p.orbit,
+      p.home.y + Math.sin(a * 1.7 + p.phase) * 1.6 + p.tilt,
+      p.home.z + Math.sin(a) * p.orbit,
+    );
+    let spd = 3.4;
+    if (running && near < 17) {                       // bolt away from the hull
+      V2.copy(p.pos).sub(toShark.setLength(16));
+      spd = 11;
+      p.scare = 1;
+    }
+    V2.sub(p.pos);
+    if (V2.lengthSq() > 1e-4) V2.setLength(spd);
+    p.vel.lerp(V2, Math.min(1, 2.6 * dt));
+    p.pos.addScaledVector(p.vel, dt);
+    p.pos.y = clamp(p.pos.y, seabed(p.pos.x, p.pos.z) + 1.4, SURFACE - 2);
+    if (p.vel.lengthSq() > 1e-3) p.group.lookAt(V2.copy(p.pos).add(p.vel));
+    p.group.userData.tail.rotation.y = Math.sin(t * 11 + p.phase) * 0.55;
+    return;
+  }
+
+  if (p.kind === 'crab') {
+    let spd = p.speed;
+    if (running && near < 13) {
+      p.heading = Math.atan2(-toShark.z, -toShark.x);
+      spd = p.speed * 3.1;
+      p.scare = 1;
+    } else {
+      p.heading += Math.sin(t * 0.7 + p.phase) * 0.7 * dt;
+    }
+    const r = Math.hypot(p.pos.x, p.pos.z);
+    if (r > ARENA - 8) p.heading = Math.atan2(-p.pos.z, -p.pos.x);
+    p.pos.x += Math.cos(p.heading) * spd * dt;
+    p.pos.z += Math.sin(p.heading) * spd * dt;
+    p.pos.y = seabed(p.pos.x, p.pos.z) + 0.1;
+    p.group.rotation.y = -p.heading;                  // crabs travel sideways
+    const gait = Math.min(1, spd / 2);
+    for (const l of p.group.userData.legs) {
+      l.leg.rotation.z = Math.sin(t * 9 + l.phase) * 0.3 * gait;
+    }
+    return;
+  }
+
+  // octopus: mostly a slow crawl, but it jets and inks when crowded
+  if (running && near < 15 && p.jet <= 0) {
+    p.jet = 1.1;
+    p.vel.copy(toShark).setLength(-9);
+    p.vel.y = 3.5;
+    inkPuff(p.pos);
+  }
+  p.jet = Math.max(0, p.jet - dt);
+  p.vel.multiplyScalar(1 - 1.6 * dt);
+  if (p.jet <= 0) {
+    p.heading += Math.sin(t * 0.4 + p.phase) * 0.5 * dt;
+    p.vel.x += Math.cos(p.heading) * 0.7 * dt;
+    p.vel.z += Math.sin(p.heading) * 0.7 * dt;
+  }
+  p.pos.addScaledVector(p.vel, dt);
+  const rest = seabed(p.pos.x, p.pos.z) + 1.1;
+  p.pos.y += (rest - p.pos.y) * Math.min(1, 1.4 * dt);
+  const or = Math.hypot(p.pos.x, p.pos.z);
+  if (or > ARENA - 10) {
+    p.pos.x *= (ARENA - 10) / or;
+    p.pos.z *= (ARENA - 10) / or;
+  }
+  p.group.rotation.y += ((p.jet > 0 ? Math.atan2(p.vel.x, p.vel.z) : p.heading)
+    - p.group.rotation.y) * Math.min(1, 2 * dt);
+  const wave = p.jet > 0 ? 2.4 : 1;
+  for (const arm of p.group.userData.arms) {
+    arm.joints.forEach((j, k) => {
+      j.rotation.x = Math.sin(t * 2.2 * wave + arm.phase + k * 0.7) * 0.3 * wave;
+      if (k === 0) j.rotation.z = Math.sin(t * 1.6 + arm.phase) * 0.18;
+    });
+  }
+}
+
+function updateJelly(j, dt, t) {
+  const pulse = Math.sin(t * 1.6 + j.phase);
+  j.bell.scale.set(1 + pulse * 0.12, 1 - pulse * 0.2, 1 + pulse * 0.12);
+  j.group.position.y += (pulse > 0 ? pulse * 1.4 : pulse * 0.4) * j.rise * dt * 2.4;
+  j.group.position.x += Math.cos(j.drift + t * 0.12) * 0.5 * dt;
+  j.group.position.z += Math.sin(j.drift + t * 0.12) * 0.5 * dt;
+  const lo = seabed(j.group.position.x, j.group.position.z) + 4;
+  j.group.position.y = clamp(j.group.position.y, lo, SURFACE - 5);
+  for (const tent of j.tents) {
+    tent.mesh.rotation.x = Math.sin(t * 1.6 + j.phase + tent.phase) * 0.22;
+    tent.mesh.rotation.z = Math.cos(t * 1.4 + j.phase + tent.phase) * 0.22;
+  }
+}
+
+/* ------------------------------------------------------------------- HUD */
+function hud() {
+  const m = Math.floor(state.t / 60), s = Math.floor(state.t % 60);
+  const clockEl = $('clock');
+  clockEl.textContent = m + ':' + String(s).padStart(2, '0');
+  clockEl.classList.toggle('warn', state.t <= 30);
+  $('score').textContent = state.score;
+  $('kn').textContent = Math.round(state.speed * 1.4);
+  $('depth').textContent = Math.max(0, Math.round(SURFACE - shark.position.y));
+  $('chargeFill').style.width = (state.charge * 100).toFixed(0) + '%';
+  $('chargeBar').classList.toggle('low', state.charge < 0.3);
+  const c = $('combo');
+  c.classList.toggle('on', state.chain > 1);
+  c.textContent = '×' + state.chain + ' feeding frenzy';
+}
+
+/* ------------------------------------------------------------------ loop */
+const clock = new THREE.Clock();
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => {
+  requestAnimationFrame(resize);
+  setTimeout(resize, 250);
+});
+visualViewport?.addEventListener('resize', resize);
+resize();
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  step(dt, clock.elapsedTime);
+  hud();
+  renderer.render(scene, camera);
+}
+
+/* ------------------------------------------------------------------ boot */
+$('startBtn').addEventListener('click', () => { initAudio(); startRun(); });
+$('againBtn').addEventListener('click', () => { initAudio(); startRun(); });
+$('mute').addEventListener('click', () => { initAudio(); toggleMute(); });
+if (audio.muted) {
+  $('mute').classList.add('off');
+  $('mute').setAttribute('aria-pressed', 'true');
+  $('mute').setAttribute('aria-label', 'Sound off');
+}
+if (state.best > 0) {
+  $('bestLine').textContent = 'Best haul so far: ' + state.best
+    + '. Quick catches build a chain.';
+}
+
+// the title screen is the game already running, just with the clock stopped
+shark.position.set(0, 16, -46);
+state.yaw = 0.4;
+$('loading').hidden = true;
+frame();
+</script>
+
+</body>
+</html>

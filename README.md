@@ -9,7 +9,9 @@ software rasterizer in the same repo, and exported to a browser game.
 
 ## Play it
 
-**<https://anight.github.io/GrandMasterHedgehog/>**
+**<https://anight.github.io/GrandMasterHedgehog/>** — and the second game,
+**Iron Fathom**, at
+**<https://anight.github.io/GrandMasterHedgehog/shark/>**.
 
 Or locally:
 
@@ -39,6 +41,54 @@ files — a filtered noise crack over a pitch-dropping thump, jittered per shot
 so a burst does not sound mechanical, and panned to the barrel that fired.
 `M` or the note button mutes; the choice is remembered.
 
+## Iron Fathom — the robot shark
+
+`web/shark/` is a second, self-contained game in the same house style: a robot
+shark with a long segmented tail, big pectoral fins and wide glowing eyes,
+sweeping a reef for three minutes.
+
+![The robot shark over the reef](renders/shark_reef.png)
+
+Power crystals glow along the sea floor and are collected by swimming through
+them. Shoals, crabs and octopuses are worth more, but have to be caught with
+the strike — a jaws-open lunge on `Space` or the right-hand button, which
+spends the strike charge and refills over a few seconds. Drifting jellyfish
+carry a live charge: touch one and the hull is stunned, the chain resets and
+30 points go back. Quick catches build the chain multiplier up to ×5.
+
+**Controls** — stick under the left thumb, strike under the right; on a
+keyboard `W`/`S` lift and drop the nose, `A`/`D` turn, `Space` strikes, `R`
+starts a new dive and `M` mutes. Push the stick harder and the tail beats
+harder, so the turn and the throttle come off one thumb.
+
+Nothing is loaded but three.js: the shark, the reef, the creatures and every
+sound are built in the page.
+
+### How the tail works
+
+The hull is a chain of 14 nested nodes running nose to tail, each carrying one
+armour plate that spans the gap to the next node. Swimming is a sine wave
+walked down that chain — node *i* lags node *i-1* by a fixed phase, and the
+amplitude grows with the square of the distance from the nose:
+
+    spine[i].rotation.y = sin(swim - i * 0.55) * (0.012 + 0.085 * u * u)
+
+So the shoulders barely move, the peduncle sways and the tail whips, which is
+roughly what a real shark does. Beat rate scales with speed, so a lunge visibly
+drives the body. The fins hang off the nodes they belong to — dorsal on node 3,
+pectorals on node 2, pelvics on node 8, the caudal lobes on the last node — so
+they inherit that motion for free rather than being animated separately.
+
+The hull itself is parametric too: `PROFILE` samples the half-width from nose
+to tail and `crossX`/`crossY` squash each ring, taking the cross-section from
+wide-and-flat at the head to tall-and-thin at the tail, which is what gives the
+peduncle its blade shape. Change the profile and every plate, collar and fin
+mount re-solves around it.
+
+The weed is one `InstancedMesh` of 700 blades with the sway written into the
+vertex shader through `onBeforeCompile`, so a bed of weed costs one draw call
+and no per-frame CPU work.
+
 ## How the wheels work
 
 Each wheel is exported as its own part with the axle at its local origin, so it
@@ -67,7 +117,9 @@ spins true with no wobble. In `web/index.html`:
       main.py         renders the four views in renders/
       export_obj.py   welded OBJ + MTL -> mesh/
       export_game.py  part-split game geometry -> web/buggy.json
-    web/          the playable game (three.js, static)
+    web/          the playable games (three.js, static)
+      index.html      Grand Master Hedgehog
+      shark/          Iron Fathom, the robot shark (all geometry built in JS)
     mesh/         hedgehog.obj + .mtl — 4,441 verts, 7,692 tris, 18 materials
     renders/      stills from the Python renderer
 

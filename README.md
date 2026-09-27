@@ -9,9 +9,15 @@ software rasterizer in the same repo, and exported to a browser game.
 
 ## Play it
 
-**<https://anight.github.io/GrandMasterHedgehog/>** — and the second game,
-**Iron Fathom**, at
-**<https://anight.github.io/GrandMasterHedgehog/shark/>**.
+Three games live here, all static pages under `web/`:
+
+- **Grand Master Hedgehog** — <https://anight.github.io/GrandMasterHedgehog/>
+- **Iron Fathom** (robot shark) — <https://anight.github.io/GrandMasterHedgehog/shark/>
+- **Space Rangers** (alien maze) — <https://anight.github.io/GrandMasterHedgehog/rangers/>
+
+All three share the same controls: an analog thumb stick under the left thumb
+and an action button under the right, with `W` `A` `S` `D` and `Space` on a
+keyboard.
 
 Or locally:
 
@@ -89,6 +95,47 @@ The weed is one `InstancedMesh` of 700 blades with the sway written into the
 vertex shader through `onBeforeCompile`, so a bed of weed costs one draw call
 and no per-frame CPU work.
 
+## Space Rangers — the alien maze
+
+`web/rangers/` is an arcade maze crawl. A ranger in a white-and-green suit is
+down on a strange planet with four minutes of air: three power gems are buried
+in the corridors, the gate at the far end only opens once you have all three,
+and the locals hover the passages looking for you.
+
+![The ranger in the maze](renders/rangers_maze.png)
+
+Crystals are points, the wrist blaster takes two bolts to put a local down,
+and contact costs suit integrity. Quick pickups and kills build the same
+streak multiplier the other two games use. Get through the gate and the air
+you did not spend is worth ten points a second.
+
+**Controls** — stick to walk and turn, fire button for the blaster; `W`/`S`
+walk, `A`/`D` turn, `Space` fires, `R` drops you into a fresh maze, `M` mutes.
+The sector map at the top of the screen fills in as you explore, and shows the
+locals inside sensor range.
+
+### How the maze works
+
+The maze is cut fresh on every drop with a depth-first backtracker, then
+*braided*: about one wall in six is knocked out again so the corridors loop
+instead of ending in dead ends — being cornered by something you cannot
+outrun is not fun. A flood fill from the landing pad picks the cell furthest
+away for the gate and keeps the gems well apart from each other.
+
+Every standing wall becomes one instance of a single box mesh, so the whole
+maze is one draw call, and the same walls are registered as flat AABBs in a
+per-cell map. That map does three jobs: the ranger and the aliens are pushed
+out of walls by a circle-vs-box slide that only ever looks at the nine cells
+around them; the aliens' line of sight is a walk along the segment between
+them and the ranger; and the chase camera asks how far it can pull back before
+stone gets in the way, so it tucks in and lifts a little at corners rather
+than burying itself in a wall.
+
+Blaster bolts are stepped in short hops within each frame rather than moved
+once — at 34 units a second a bolt covers more than a wall's thickness in a
+single frame on a slow device, and would otherwise fly straight through the
+stone.
+
 ## How the wheels work
 
 Each wheel is exported as its own part with the axle at its local origin, so it
@@ -120,6 +167,7 @@ spins true with no wobble. In `web/index.html`:
     web/          the playable games (three.js, static)
       index.html      Grand Master Hedgehog
       shark/          Iron Fathom, the robot shark (all geometry built in JS)
+      rangers/        Space Rangers, the alien maze (maze cut at run time)
     mesh/         hedgehog.obj + .mtl — 4,441 verts, 7,692 tris, 18 materials
     renders/      stills from the Python renderer
 

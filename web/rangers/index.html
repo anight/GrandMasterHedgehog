@@ -1,0 +1,1999 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Space Rangers</title>
+<meta name="description" content="A space ranger stranded in an alien maze: shoot your way out, collect the crystals, power the gate with three gems.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #0a0716;
+    --panel: rgba(14, 10, 30, 0.80);
+    --line: rgba(214, 224, 255, 0.16);
+    --line-strong: rgba(214, 224, 255, 0.34);
+    --star: #e6ecff;
+    --star-dim: #98a2c8;
+    --laser: #6cff8e;
+    --gem: #c78bff;
+    --amber: #ffc861;
+    --alarm: #ff5f6d;
+    --display: "Chakra Petch", "Trebuchet MS", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--star);
+    font-family: var(--mono);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #app { position: fixed; inset: 0; overflow: hidden; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: absolute; pointer-events: none; z-index: 2; }
+
+  /* ---- top row: score + suit, map, clock ------------------------------ */
+  .hud-top {
+    top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 10px;
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  }
+  .plate {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--laser);
+    padding: 7px 14px 8px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .plate.clock { border-left-color: var(--amber); text-align: right; }
+  .topright { display: flex; align-items: flex-start; gap: 8px; }
+  .iconbtn {
+    pointer-events: auto;
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--star);
+    font-size: 15px; line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .iconbtn:hover { border-color: var(--line-strong); }
+  .iconbtn:focus-visible { outline: 2px solid var(--laser); outline-offset: 2px; }
+  .iconbtn.off { color: var(--star-dim); text-decoration: line-through; }
+  .label {
+    display: block;
+    font-family: var(--display);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--star-dim);
+  }
+  .value {
+    display: block;
+    font-family: var(--mono); font-weight: 600;
+    font-size: 26px; line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .value.warn { color: var(--alarm); }
+  .combo {
+    font-family: var(--display); font-weight: 700;
+    font-size: 12px; letter-spacing: 0.1em;
+    color: var(--amber);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .combo.on { opacity: 1; }
+
+  .stats { margin-top: 7px; display: grid; gap: 5px; width: 148px; }
+  .statline {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; color: var(--star-dim);
+  }
+  .statline b {
+    font-family: var(--mono); font-weight: 600; font-size: 12px;
+    color: var(--star); font-variant-numeric: tabular-nums;
+  }
+  .bar {
+    height: 6px; background: rgba(214, 224, 255, 0.12);
+    border: 1px solid var(--line); position: relative; overflow: hidden;
+  }
+  .bar i {
+    position: absolute; inset: 0 auto 0 0;
+    width: 100%; background: var(--laser);
+    transition: width 0.12s linear;
+  }
+  .bar.suit i { background: #59e0ff; }
+  .bar.suit.hurt i { background: var(--alarm); }
+  .bar.low i { background: var(--alarm); }
+
+  /* ---- the map ---------------------------------------------------------- */
+  .mapwrap {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 6px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  #map { display: block; width: 124px; height: 124px; image-rendering: pixelated; }
+  .maplabel {
+    display: block; text-align: center; margin-top: 3px;
+    font-family: var(--display); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--star-dim);
+  }
+  .maplabel.found { color: var(--gem); }
+
+  /* ---- keyboard legend -------------------------------------------------- */
+  .hud-keys {
+    left: calc(16px + env(safe-area-inset-left, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    display: grid; gap: 4px;
+    font-size: 11px; color: var(--star-dim);
+  }
+  .hud-keys kbd {
+    font-family: var(--mono); font-size: 10px;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    padding: 2px 6px; color: var(--star);
+  }
+
+  /* ---- touch controls: stick left, blaster right ------------------------ */
+  .touch {
+    position: absolute; inset: auto 0 0 0; z-index: 3;
+    display: none;
+    justify-content: space-between; align-items: flex-end;
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+    gap: 12px;
+  }
+  .stick {
+    position: relative;
+    width: 118px; height: 118px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    touch-action: none; user-select: none;
+  }
+  .stick::before {
+    content: "";
+    position: absolute; inset: 13px;
+    border-radius: 50%;
+    border: 1px dashed rgba(214, 224, 255, 0.13);
+  }
+  .stick.active { border-color: var(--laser); }
+  .stick-knob {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: rgba(108, 255, 142, 0.38);
+    border: 1px solid var(--line-strong);
+    pointer-events: none;
+  }
+  .stick.active .stick-knob { background: rgba(108, 255, 142, 0.7); }
+  .stick.springing .stick-knob { transition: transform 0.16s ease-out; }
+  .btn {
+    width: 62px; height: 62px;
+    display: grid; place-items: center;
+    background: var(--panel); border: 1px solid var(--line-strong);
+    color: var(--star);
+    font-family: var(--display); font-weight: 700; font-size: 12px;
+    letter-spacing: 0.08em;
+    user-select: none; touch-action: none;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .btn.fire {
+    border-color: var(--laser); color: var(--laser);
+    width: 86px; height: 86px; border-radius: 50%;
+    font-size: 13px;
+  }
+  .btn:active, .btn.down { background: rgba(108, 255, 142, 0.3); color: var(--star); }
+  body.touch-mode .touch { display: flex; }
+  body.touch-mode .hud-keys { display: none; }
+
+  /* ---- flashes and call-outs -------------------------------------------- */
+  #flash {
+    position: absolute; inset: 0; z-index: 3; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(255,95,109,0) 42%, rgba(255, 95, 109, 0.6) 100%);
+    opacity: 0;
+  }
+  .toast {
+    top: 58%; left: 50%; transform: translate(-50%, -50%);
+    border: 1px solid var(--gem);
+    background: rgba(20, 8, 32, 0.6);
+    padding: 8px 18px;
+    font-family: var(--display); font-weight: 700;
+    font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gem);
+    opacity: 0; transition: opacity 0.25s;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    white-space: nowrap;
+  }
+  .toast.on { opacity: 1; }
+
+  /* ---- overlays ---------------------------------------------------------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 4;
+    display: grid; place-items: center;
+    padding: 16px;
+    background: rgba(6, 4, 16, 0.6);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .card {
+    box-sizing: border-box;
+    width: min(460px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--laser);
+    padding: 26px;
+  }
+  .eyebrow {
+    display: block;
+    font-family: var(--display); font-weight: 700;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--laser);
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700;
+    font-size: clamp(26px, 6vw, 38px);
+    letter-spacing: 0.02em;
+    margin: 6px 0 12px;
+  }
+  .card p {
+    margin: 0 0 18px; font-size: 13px; line-height: 1.6;
+    color: var(--star-dim); max-width: 42ch;
+  }
+  .specs {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 20px;
+  }
+  .spec { border: 1px solid var(--line); padding: 7px 10px; }
+  .spec b { display: block; font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .go {
+    display: block; width: 100%;
+    font-family: var(--display); font-weight: 700;
+    font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); background: var(--laser);
+    border: 0; padding: 14px; cursor: pointer;
+  }
+  .go:hover { background: var(--star); }
+  .go:focus-visible { outline: 3px solid var(--gem); outline-offset: 2px; }
+  .fineprint { margin: 12px 0 0; font-size: 11px; color: var(--star-dim); }
+  .fineprint a { color: var(--laser); }
+  .scoreline {
+    display: flex; align-items: baseline; gap: 12px;
+    font-variant-numeric: tabular-nums; margin-bottom: 16px;
+  }
+  .scoreline .big { font-size: 44px; font-weight: 600; line-height: 1; }
+  .scoreline .sub { font-size: 12px; color: var(--star-dim); }
+
+  .overlay[hidden], .loading[hidden] { display: none !important; }
+
+  .loading {
+    position: absolute; inset: 0; z-index: 5;
+    display: grid; place-items: center;
+    background: var(--ink);
+    font-family: var(--display); font-weight: 600;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--star-dim);
+    text-align: center; padding: 20px;
+  }
+
+  @media (max-width: 560px) {
+    .hud-keys { display: none; }
+    .touch { display: flex; }
+    #map { width: 96px; height: 96px; }
+    .stats { width: 120px; }
+    .value { font-size: 20px; }
+  }
+  @media (max-width: 400px) {
+    #map { width: 76px; height: 76px; }
+    .stats { width: 104px; }
+    .plate { padding: 5px 10px 6px; }
+    .stick { width: 104px; height: 104px; }
+    .stick-knob { width: 48px; height: 48px; }
+    .btn.fire { width: 76px; height: 76px; }
+    .touch {
+      gap: 8px;
+      padding-left: calc(12px + env(safe-area-inset-left, 0px));
+      padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    }
+  }
+  @media (max-width: 344px) {
+    .stick { width: 92px; height: 92px; }
+    .stick-knob { width: 42px; height: 42px; }
+    .btn.fire { width: 68px; height: 68px; font-size: 11px; }
+  }
+
+  /* ---- phones held sideways --------------------------------------------- */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .hud-top {
+      padding: 8px;
+      padding-top: calc(8px + env(safe-area-inset-top, 0px));
+      padding-left: calc(10px + env(safe-area-inset-left, 0px));
+      padding-right: calc(10px + env(safe-area-inset-right, 0px));
+    }
+    .plate { padding: 4px 10px 5px; }
+    .topright { gap: 6px; }
+    .value { font-size: 17px; }
+    .label { font-size: 9px; letter-spacing: 0.14em; }
+    .combo { font-size: 10px; }
+    #map { width: 84px; height: 84px; }
+    .stats { width: 130px; margin-top: 5px; }
+    .hud-keys { display: none; }
+    .touch { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .stick { width: 100px; height: 100px; }
+    .stick-knob { width: 46px; height: 46px; }
+    .btn.fire { width: 74px; height: 74px; font-size: 12px; }
+
+    .overlay {
+      display: flex; align-items: flex-start; justify-content: center;
+      overflow-y: auto; padding: 10px;
+    }
+    .card {
+      margin: auto;
+      width: min(720px, 100%);
+      padding: 14px 18px 16px;
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      column-gap: 20px;
+      align-items: start;
+    }
+    .card .eyebrow, .card h1, .card p, .card .scoreline { grid-column: 1; }
+    .card .specs, .card .go, .card .fineprint { grid-column: 2; }
+    h1 { font-size: clamp(22px, 5.4vh, 30px); margin: 4px 0 6px; }
+    .card p { font-size: 12px; line-height: 1.5; margin-bottom: 0; max-width: none; }
+    .specs { margin-bottom: 10px; }
+    .spec { padding: 6px 10px; }
+    .spec b { font-size: 13px; }
+    .go { padding: 11px; font-size: 13px; }
+    .scoreline { margin-bottom: 0; }
+    .scoreline .big { font-size: 34px; }
+    .fineprint { margin-top: 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .combo, .toast { transition: none; }
+    .stick.springing .stick-knob { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="view"></canvas>
+
+  <header class="hud hud-top">
+    <div>
+      <div class="plate">
+        <span class="label">Score</span>
+        <span class="value" id="score">0</span>
+        <span class="combo" id="combo">&times;2 streak</span>
+      </div>
+      <div class="stats">
+        <div class="statline"><span>Suit</span><b id="suitPct">100%</b></div>
+        <div class="bar suit" id="suitBar"><i id="suitFill"></i></div>
+        <div class="statline"><span>Cell</span><b id="chargePct">100%</b></div>
+        <div class="bar" id="cellBar"><i id="cellFill"></i></div>
+        <div class="statline"><span>Gems</span><b id="gemLine">0 / 3</b></div>
+      </div>
+    </div>
+
+    <div class="mapwrap">
+      <canvas id="map" width="124" height="124"></canvas>
+      <span class="maplabel" id="mapLabel">Sector map</span>
+    </div>
+
+    <div class="topright">
+      <button class="iconbtn" id="mute" type="button" title="Sound on or off (M)"
+              aria-pressed="false" aria-label="Sound on">&#9834;</button>
+      <div class="plate clock">
+        <span class="label">Air</span>
+        <span class="value" id="clock">4:00</span>
+      </div>
+    </div>
+  </header>
+
+  <footer class="hud hud-keys">
+    <div><kbd>W</kbd><kbd>S</kbd> walk<span style="width:8px"></span><kbd>A</kbd><kbd>D</kbd> turn</div>
+    <div><kbd>Space</kbd> fire the wrist blaster</div>
+    <div><kbd>R</kbd> new landing<span style="width:8px"></span><kbd>M</kbd> sound</div>
+  </footer>
+
+  <div class="hud toast" id="toast">Gate powered</div>
+  <div id="flash"></div>
+
+  <div class="touch" id="touch">
+    <div class="stick" id="stick" role="application" aria-label="Walk">
+      <span class="stick-knob" id="knob"></span>
+    </div>
+    <div class="btn fire" data-key="fire">FIRE</div>
+  </div>
+
+  <div class="overlay" id="startCard">
+    <div class="card">
+      <span class="eyebrow">Star Command &mdash; landing party of one</span>
+      <h1>Space Rangers</h1>
+      <p>
+        Your pod is down in the stone maze of a strange planet and the air in
+        the suit is good for four minutes. Three power gems are buried in the
+        corridors; find all three and the gate at the far end of the maze
+        opens. The locals are not pleased to see you.
+      </p>
+      <div class="specs">
+        <div class="spec"><span class="label">Sidearm</span><b>Wrist blaster</b></div>
+        <div class="spec"><span class="label">Gate keys</span><b>3 gems</b></div>
+        <div class="spec"><span class="label">Maze</span><b>13 &times; 13</b></div>
+        <div class="spec"><span class="label">Air</span><b>4 min</b></div>
+      </div>
+      <button class="go" id="startBtn">Drop in</button>
+      <p class="fineprint" id="bestLine">Stick to walk and turn, fire button for the blaster. The map is top of screen.</p>
+      <p class="fineprint"><a href="../">Grand Master Hedgehog</a> &middot; <a href="../shark/">Iron Fathom</a></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="endCard" hidden>
+    <div class="card">
+      <span class="eyebrow" id="endEyebrow">Mission log</span>
+      <h1 id="endTitle">Suit breached</h1>
+      <div class="scoreline">
+        <span class="big" id="endScore">0</span>
+        <span class="sub" id="endDetail">points</span>
+      </div>
+      <button class="go" id="againBtn">Drop in again</button>
+      <p class="fineprint" id="endBest"></p>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">Cutting the maze&hellip;</div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const $ = (id) => document.getElementById(id);
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clamp = THREE.MathUtils.clamp;
+
+/* ------------------------------------------------------------------ world */
+const MW = 13, MH = 13;            // maze size in cells
+const CELL = 6;                    // corridor width
+const WALL_H = 4.6, WALL_T = 0.8;
+const HALF_W = MW * CELL / 2, HALF_H = MH * CELL / 2;
+const MAX_WALLS = MW * (MH + 1) + MH * (MW + 1);
+
+const cellX = (cx) => (cx + 0.5) * CELL - HALF_W;
+const cellZ = (cy) => (cy + 0.5) * CELL - HALF_H;
+const cellOf = (x, z) => [
+  clamp(Math.floor((x + HALF_W) / CELL), 0, MW - 1),
+  clamp(Math.floor((z + HALF_H) / CELL), 0, MH - 1),
+];
+
+const renderer = new THREE.WebGLRenderer({
+  canvas: $('view'), antialias: true, powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(new THREE.Color('#150d2b'), 0.019);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 700);
+scene.add(camera);
+
+/* alien sky: indigo overhead, a hot magenta band at the horizon */
+{
+  const g = new THREE.SphereGeometry(320, 20, 14);
+  const top = new THREE.Color('#0b0722'), low = new THREE.Color('#6b2a63');
+  const col = [];
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const t = clamp(p.getY(i) / 320 * 1.4 + 0.3, 0, 1);
+    const c = low.clone().lerp(top, Math.pow(t, 0.7));
+    col.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.BackSide, fog: false,
+  })));
+
+  // stars
+  const starPos = [];
+  for (let i = 0; i < 700; i++) {
+    const v = new THREE.Vector3(
+      Math.random() * 2 - 1, Math.random() * 0.9 + 0.05, Math.random() * 2 - 1,
+    ).normalize().multiplyScalar(300);
+    starPos.push(v.x, v.y, v.z);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+  scene.add(new THREE.Points(sg, new THREE.PointsMaterial({
+    color: 0xd8e2ff, size: 1.6, sizeAttenuation: false, fog: false,
+  })));
+
+  // two moons, because one would be ordinary
+  const moonA = new THREE.Mesh(new THREE.SphereGeometry(26, 20, 14),
+    new THREE.MeshBasicMaterial({ color: 0xf2d9ff, fog: false }));
+  moonA.position.set(-150, 118, -230);
+  const moonB = new THREE.Mesh(new THREE.SphereGeometry(13, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0x8be0d0, fog: false }));
+  moonB.position.set(190, 86, -180);
+  scene.add(moonA, moonB);
+}
+
+scene.add(new THREE.HemisphereLight(0xa87ce0, 0x2a1b3a, 1.05));
+const sun = new THREE.DirectionalLight(0xd6c4ff, 1.0);
+sun.position.set(-60, 90, -40);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 20;
+sun.shadow.camera.far = 240;
+const SH = 52;
+Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
+sun.shadow.bias = -0.0015;
+sun.shadow.normalBias = 0.05;
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.autoUpdate = false;      // refreshed every third frame instead
+scene.add(sun, sun.target);
+
+/* a soft radial sprite, reused for every glow in the game */
+function glowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const GLOW = glowTexture();
+function glow(color, size) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: GLOW, color, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, fog: false,
+  }));
+  s.scale.setScalar(size);
+  return s;
+}
+
+/* ---- ground ------------------------------------------------------------ */
+{
+  const g = new THREE.PlaneGeometry(520, 520, 90, 90);
+  g.rotateX(-Math.PI / 2);
+  const rock = new THREE.Color('#33244a'), dust = new THREE.Color('#5b4470');
+  const p = g.attributes.position;
+  const col = [];
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i);
+    const inside = Math.abs(x) < HALF_W + 2 && Math.abs(z) < HALF_H + 2;
+    // the maze floor is flat; the plain around it rolls away
+    if (!inside) {
+      p.setY(i, Math.sin(x * 0.07) * Math.cos(z * 0.06) * 1.4
+        + Math.sin(x * 0.19 + 1.7) * 0.4 - 0.2);
+    }
+    const c = rock.clone().lerp(dust, Math.random() * 0.8);
+    col.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({
+    vertexColors: true, flatShading: true,
+  }));
+  m.receiveShadow = true;
+  scene.add(m);
+}
+
+/* ---- the maze ---------------------------------------------------------- */
+// cells[y][x] = { n, e, s, w } - true means the wall is standing
+const cells = [];
+for (let y = 0; y < MH; y++) {
+  const row = [];
+  for (let x = 0; x < MW; x++) row.push({ n: true, e: true, s: true, w: true, seen: false });
+  cells.push(row);
+}
+
+const wallGeo = new THREE.BoxGeometry(1, WALL_H, 1);
+wallGeo.translate(0, WALL_H / 2, 0);
+const wallMat = new THREE.MeshLambertMaterial({ flatShading: true });
+const walls = new THREE.InstancedMesh(wallGeo, wallMat, MAX_WALLS);
+walls.castShadow = true;
+walls.receiveShadow = true;
+walls.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+scene.add(walls);
+
+/* glowing lichen on the stone: the only thing that makes a corridor readable
+   from more than a few paces away, and it costs no lights */
+const runes = [];
+{
+  const geo = new THREE.BoxGeometry(0.72, 0.15, 0.07);
+  const mats = [0x6be8ff, 0xffb35c, 0x8affd6].map((tint) => new THREE.MeshLambertMaterial({
+    color: tint, emissive: tint, emissiveIntensity: 0.85, flatShading: true,
+  }));
+  for (let i = 0; i < 64; i++) {
+    const tint = [0x6be8ff, 0xffb35c, 0x8affd6][i % 3];
+    const m = new THREE.Mesh(geo, mats[i % 3]);
+    if (i % 2 === 0) m.add(glow(tint, 1.7));
+    m.visible = false;
+    scene.add(m);
+    runes.push(m);
+  }
+}
+
+const boxes = [];                    // every standing wall as an AABB
+const cellWalls = new Map();         // "cx,cy" -> AABBs that can be touched there
+const keyOf = (cx, cy) => cx + ',' + cy;
+
+function addWall(x, z, w, d) {
+  const box = { x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 };
+  boxes.push(box);
+  // register in every cell the box touches, so collision only looks nearby
+  const [cx0, cy0] = cellOf(box.x0 - 0.1, box.z0 - 0.1);
+  const [cx1, cy1] = cellOf(box.x1 + 0.1, box.z1 + 0.1);
+  for (let cy = cy0; cy <= cy1; cy++) {
+    for (let cx = cx0; cx <= cx1; cx++) {
+      const k = keyOf(cx, cy);
+      if (!cellWalls.has(k)) cellWalls.set(k, []);
+      cellWalls.get(k).push(box);
+    }
+  }
+  return box;
+}
+
+const mazeRng = () => Math.random();
+
+function carveMaze() {
+  for (let y = 0; y < MH; y++) {
+    for (let x = 0; x < MW; x++) {
+      const c = cells[y][x];
+      c.n = c.e = c.s = c.w = true;
+      c.seen = false;
+    }
+  }
+  // depth-first backtracker from the landing cell
+  const stack = [[0, 0]];
+  cells[0][0].seen = true;
+  while (stack.length) {
+    const [x, y] = stack[stack.length - 1];
+    const options = [];
+    if (y > 0 && !cells[y - 1][x].seen) options.push([0, -1, 'n', 's']);
+    if (y < MH - 1 && !cells[y + 1][x].seen) options.push([0, 1, 's', 'n']);
+    if (x > 0 && !cells[y][x - 1].seen) options.push([-1, 0, 'w', 'e']);
+    if (x < MW - 1 && !cells[y][x + 1].seen) options.push([1, 0, 'e', 'w']);
+    if (!options.length) { stack.pop(); continue; }
+    const [dx, dy, here, there] = options[(mazeRng() * options.length) | 0];
+    cells[y][x][here] = false;
+    cells[y + dy][x + dx][there] = false;
+    cells[y + dy][x + dx].seen = true;
+    stack.push([x + dx, y + dy]);
+  }
+  // braid: knock a few more walls out so the maze loops instead of being all
+  // dead ends - better to run circles round an alien than to be cornered
+  for (let i = 0; i < MW * MH * 0.16; i++) {
+    const x = 1 + ((mazeRng() * (MW - 2)) | 0);
+    const y = 1 + ((mazeRng() * (MH - 2)) | 0);
+    if (mazeRng() < 0.5) { cells[y][x].n = false; cells[y - 1][x].s = false; }
+    else { cells[y][x].w = false; cells[y][x - 1].e = false; }
+  }
+}
+
+function buildWalls() {
+  boxes.length = 0;
+  cellWalls.clear();
+  const dummy = new THREE.Object3D();
+  const col = new THREE.Color();
+  let n = 0;
+  const put = (x, z, w, d) => {
+    addWall(x, z, w, d);
+    dummy.position.set(x, 0, z);
+    dummy.scale.set(w, 1, d);
+    dummy.updateMatrix();
+    walls.setMatrixAt(n, dummy.matrix);
+    col.setHSL(0.72 + Math.random() * 0.07, 0.3, 0.2 + Math.random() * 0.12);
+    walls.setColorAt(n, col);
+    n++;
+  };
+  for (let y = 0; y < MH; y++) {
+    for (let x = 0; x < MW; x++) {
+      const c = cells[y][x];
+      if (c.n) put(cellX(x), cellZ(y) - CELL / 2, CELL + WALL_T, WALL_T);
+      if (c.w) put(cellX(x) - CELL / 2, cellZ(y), WALL_T, CELL + WALL_T);
+      if (y === MH - 1 && c.s) put(cellX(x), cellZ(y) + CELL / 2, CELL + WALL_T, WALL_T);
+      if (x === MW - 1 && c.e) put(cellX(x) + CELL / 2, cellZ(y), WALL_T, CELL + WALL_T);
+    }
+  }
+  walls.count = n;
+  walls.instanceMatrix.needsUpdate = true;
+  if (walls.instanceColor) walls.instanceColor.needsUpdate = true;
+  dressWalls();
+}
+
+// scatter the lichen over the faces of whatever walls this maze ended up with
+function dressWalls() {
+  for (const r of runes) {
+    const b = boxes[(Math.random() * boxes.length) | 0];
+    const alongX = (b.x1 - b.x0) > (b.z1 - b.z0);
+    const y = 1.5 + Math.random() * 2.2;
+    if (alongX) {
+      const face = Math.random() < 0.5 ? b.z0 - 0.05 : b.z1 + 0.05;
+      r.position.set(b.x0 + Math.random() * (b.x1 - b.x0), y, face);
+      r.rotation.set(0, 0, (Math.random() - 0.5) * 0.5);
+    } else {
+      const face = Math.random() < 0.5 ? b.x0 - 0.05 : b.x1 + 0.05;
+      r.position.set(face, y, b.z0 + Math.random() * (b.z1 - b.z0));
+      r.rotation.set(0, Math.PI / 2, (Math.random() - 0.5) * 0.5);
+    }
+    r.visible = true;
+  }
+}
+
+// how far every cell is from the landing pad, in corridor steps
+function floodFrom(sx, sy) {
+  const dist = Array.from({ length: MH }, () => new Array(MW).fill(-1));
+  const q = [[sx, sy]];
+  dist[sy][sx] = 0;
+  for (let i = 0; i < q.length; i++) {
+    const [x, y] = q[i];
+    const c = cells[y][x];
+    if (!c.n && y > 0 && dist[y - 1][x] < 0) { dist[y - 1][x] = dist[y][x] + 1; q.push([x, y - 1]); }
+    if (!c.s && y < MH - 1 && dist[y + 1][x] < 0) { dist[y + 1][x] = dist[y][x] + 1; q.push([x, y + 1]); }
+    if (!c.w && x > 0 && dist[y][x - 1] < 0) { dist[y][x - 1] = dist[y][x] + 1; q.push([x - 1, y]); }
+    if (!c.e && x < MW - 1 && dist[y][x + 1] < 0) { dist[y][x + 1] = dist[y][x] + 1; q.push([x + 1, y]); }
+  }
+  return dist;
+}
+
+/* circle-against-wall push-out, used by the ranger and by the aliens */
+function slideOut(pos, radius) {
+  const [cx, cy] = cellOf(pos.x, pos.z);
+  let hit = false;
+  for (let y = cy - 1; y <= cy + 1; y++) {
+    for (let x = cx - 1; x <= cx + 1; x++) {
+      const list = cellWalls.get(keyOf(x, y));
+      if (!list) continue;
+      for (const b of list) {
+        const nx = clamp(pos.x, b.x0, b.x1);
+        const nz = clamp(pos.z, b.z0, b.z1);
+        const dx = pos.x - nx, dz = pos.z - nz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= radius * radius) continue;
+        hit = true;
+        if (d2 > 1e-6) {
+          const d = Math.sqrt(d2);
+          pos.x = nx + (dx / d) * radius;
+          pos.z = nz + (dz / d) * radius;
+        } else {
+          // dead centre inside the box: back out along the shallowest axis
+          const left = pos.x - b.x0, right = b.x1 - pos.x;
+          const up = pos.z - b.z0, down = b.z1 - pos.z;
+          const m = Math.min(left, right, up, down);
+          if (m === left) pos.x = b.x0 - radius;
+          else if (m === right) pos.x = b.x1 + radius;
+          else if (m === up) pos.z = b.z0 - radius;
+          else pos.z = b.z1 + radius;
+        }
+      }
+    }
+  }
+  return hit;
+}
+
+/* is the straight line between two points clear of walls? */
+function seesThrough(ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const len = Math.hypot(dx, dz);
+  const steps = Math.ceil(len / 0.8);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const x = ax + dx * t, z = az + dz * t;
+    const [cx, cy] = cellOf(x, z);
+    const list = cellWalls.get(keyOf(cx, cy));
+    if (!list) continue;
+    for (const b of list) {
+      if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return false;
+    }
+  }
+  return true;
+}
+
+/* ------------------------------------------------------------- the ranger
+   Built from boxes and cylinders in nested groups: hips carry the legs, the
+   chest carries the arms, and each limb hangs off its own pivot so the walk
+   cycle is two sine waves in antiphase rather than a baked animation. */
+const SUIT = new THREE.MeshLambertMaterial({ color: 0xeef2fb, flatShading: true });
+const SUIT_GREEN = new THREE.MeshLambertMaterial({ color: 0x4cc46a, flatShading: true });
+const SUIT_PURPLE = new THREE.MeshLambertMaterial({ color: 0x6d4bb0, flatShading: true });
+const SUIT_DARK = new THREE.MeshLambertMaterial({ color: 0x2b2740, flatShading: true });
+const VISOR = new THREE.MeshLambertMaterial({
+  color: 0xa9e8ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+});
+const MUZZLE_MAT = new THREE.MeshLambertMaterial({
+  color: 0x1d2a22, emissive: 0x5bff92, emissiveIntensity: 0.9, flatShading: true,
+});
+
+const jetGlows = [];
+const wings = [];
+
+const ranger = new THREE.Group();
+scene.add(ranger);
+const body = new THREE.Group();        // bobs with the stride
+ranger.add(body);
+
+const limbs = { legL: null, legR: null, armL: null, armR: null };
+{
+  const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const tube = (r0, r1, h, mat) => new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 7), mat);
+
+  // legs: pivot at the hip, mesh hanging below it
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.19, 0.78, 0);
+    const thigh = tube(0.14, 0.13, 0.46, SUIT);
+    thigh.position.y = -0.23;
+    const shin = tube(0.13, 0.12, 0.42, SUIT_PURPLE);
+    shin.position.y = -0.67;
+    const boot = box(0.22, 0.14, 0.34, SUIT_PURPLE);
+    boot.position.set(0, -0.9, 0.05);
+    pivot.add(thigh, shin, boot);
+    pivot.children.forEach((m) => { m.castShadow = true; });
+    body.add(pivot);
+    limbs[side < 0 ? 'legL' : 'legR'] = pivot;
+  }
+
+  const hips = box(0.56, 0.26, 0.38, SUIT_PURPLE);
+  hips.position.y = 0.86;
+  const chest = box(0.72, 0.62, 0.42, SUIT);
+  chest.position.y = 1.3;
+  const plate = box(0.42, 0.34, 0.06, SUIT_GREEN);
+  plate.position.set(0, 1.34, 0.23);
+  const belt = box(0.6, 0.1, 0.42, SUIT_GREEN);
+  belt.position.y = 1.02;
+  const collar = box(0.36, 0.12, 0.3, SUIT_PURPLE);
+  collar.position.y = 1.66;
+  body.add(hips, chest, plate, belt, collar);
+  [hips, chest, plate, belt, collar].forEach((m) => { m.castShadow = true; });
+
+  // arms
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.44, 1.52, 0);
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), SUIT_GREEN);
+    const upper = tube(0.11, 0.1, 0.4, SUIT);
+    upper.position.y = -0.24;
+    const fore = tube(0.1, 0.095, 0.36, SUIT_PURPLE);
+    fore.position.y = -0.6;
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), SUIT_GREEN);
+    glove.position.y = -0.8;
+    pivot.add(shoulder, upper, fore, glove);
+    pivot.children.forEach((m) => { m.castShadow = true; });
+    if (side > 0) {
+      // the blaster rides on the right forearm and points where the ranger looks
+      const gun = box(0.14, 0.16, 0.36, SUIT_DARK);
+      gun.position.set(0, -0.62, 0.22);
+      const tip = box(0.07, 0.07, 0.1, MUZZLE_MAT);
+      tip.position.set(0, -0.62, 0.42);
+      const spark = glow(0x76ffa4, 0.7);
+      spark.position.set(0, -0.62, 0.46);
+      pivot.add(gun, tip, spark);
+    }
+    body.add(pivot);
+    limbs[side < 0 ? 'armL' : 'armR'] = pivot;
+  }
+
+  // head and dome
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8),
+    new THREE.MeshLambertMaterial({ color: 0xf0c9a8, flatShading: true }));
+  head.position.y = 1.86;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 10), VISOR);
+  dome.position.y = 1.87;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 4, 12), SUIT_PURPLE);
+  ring.position.y = 1.7;
+  ring.rotation.x = Math.PI / 2;
+  body.add(head, dome, ring);
+  head.castShadow = true;
+
+  // jetpack
+  const pack = box(0.46, 0.46, 0.2, SUIT);
+  pack.position.set(0, 1.34, -0.3);
+  pack.castShadow = true;
+  body.add(pack);
+  for (const side of [-1, 1]) {
+    const nozzle = tube(0.07, 0.09, 0.2, SUIT_DARK);
+    nozzle.position.set(side * 0.14, 1.08, -0.3);
+    body.add(nozzle);
+    const flame = glow(0x8fd8ff, 0.5);
+    flame.position.set(side * 0.14, 0.98, -0.3);
+    body.add(flame);
+    jetGlows.push(flame);
+  }
+  // the wings fold out of the pack when the ranger runs
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    const panel = box(0.1, 0.34, 0.5, SUIT_PURPLE);
+    panel.position.z = -0.22;
+    wing.add(panel);
+    wing.position.set(side * 0.2, 1.4, -0.36);
+    body.add(wing);
+    wings.push({ group: wing, side });
+  }
+}
+
+// the suit lamp: without it the far corridors are unreadable
+const lamp = new THREE.PointLight(0x9fffd6, 2.4, 24, 1.5);
+lamp.position.set(0, 1.6, 0);
+ranger.add(lamp);
+
+/* how far the chase camera can pull back before a wall gets in the way */
+function freeDistance(x, z, dx, dz, maxD) {
+  const step = 0.35;
+  for (let d = step; d <= maxD; d += step) {
+    const px = x + dx * d, pz = z + dz * d;
+    const [cx, cy] = cellOf(px, pz);
+    const list = cellWalls.get(keyOf(cx, cy));
+    if (list) {
+      for (const b of list) {
+        if (px > b.x0 - 0.45 && px < b.x1 + 0.45 && pz > b.z0 - 0.45 && pz < b.z1 + 0.45) {
+          return Math.max(2.4, d - step);
+        }
+      }
+    }
+  }
+  return maxD;
+}
+
+/* ----------------------------------------------------------------- aliens
+   Hovering locals: a bulb, two eyes, three dangling tendrils. They wander the
+   corridors until they see the ranger down a clear line, then come at him. */
+const ALIEN_TINTS = [0x7ee08a, 0x6fd0e0, 0xd98ae0];
+const aliens = [];
+function makeAlien(tint) {
+  const skin = new THREE.MeshLambertMaterial({
+    color: tint, emissive: tint, emissiveIntensity: 0.18, flatShading: true,
+  });
+  const grp = new THREE.Group();
+  const bulb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 0), skin);
+  bulb.scale.set(1, 0.85, 1);
+  bulb.castShadow = true;
+  grp.add(bulb);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xfff3b0 }));
+    eye.position.set(side * 0.24, 0.1, 0.5);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0x14100f }));
+    pupil.position.set(side * 0.24, 0.1, 0.63);
+    grp.add(eye, pupil);
+  }
+  const tendrils = [];
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const root = new THREE.Group();
+    root.position.set(Math.cos(a) * 0.26, -0.4, Math.sin(a) * 0.26);
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.03, 0.7, 5), skin);
+    t.position.y = -0.35;
+    root.add(t);
+    grp.add(root);
+    tendrils.push({ root, phase: a });
+  }
+  grp.add(glow(tint, 2.1));
+  grp.userData.tendrils = tendrils;
+  grp.userData.skin = skin;
+  return grp;
+}
+for (let i = 0; i < 9; i++) {
+  const tint = ALIEN_TINTS[i % ALIEN_TINTS.length];
+  const g = makeAlien(tint);
+  scene.add(g);
+  aliens.push({
+    group: g, tint, alive: true, hp: 2, hurt: 0, respawn: 0,
+    heading: Math.random() * 6.28, chase: 0, phase: Math.random() * 6.28,
+    pos: g.position, speed: 3.4 + Math.random() * 1.2,
+  });
+}
+
+/* --------------------------------------------------------------- pickups */
+const crystals = [];
+{
+  const geo = new THREE.OctahedronGeometry(0.34, 0);
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0x6be8ff, emissive: 0x2ea6c8, emissiveIntensity: 0.7, flatShading: true,
+  });
+  for (let i = 0; i < 34; i++) {
+    const grp = new THREE.Group();
+    const m = new THREE.Mesh(geo, mat);
+    m.scale.set(1, 1.6, 1);
+    grp.add(m, glow(0x6be8ff, 1.5));
+    scene.add(grp);
+    crystals.push({ group: grp, live: true, phase: Math.random() * 6.28, cell: [0, 0] });
+  }
+}
+
+const gems = [];
+{
+  const geo = new THREE.IcosahedronGeometry(0.46, 0);
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xc78bff, emissive: 0x8b4bd8, emissiveIntensity: 0.9, flatShading: true,
+  });
+  for (let i = 0; i < 3; i++) {
+    const grp = new THREE.Group();
+    const m = new THREE.Mesh(geo, mat);
+    grp.add(m, glow(0xc78bff, 3.4));
+    // a slowly turning cage so a gem reads differently from a crystal
+    const cage = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.045, 4, 14),
+      new THREE.MeshLambertMaterial({ color: 0x4b3a72, flatShading: true }));
+    grp.add(cage);
+    grp.userData.cage = cage;
+    grp.userData.core = m;
+    scene.add(grp);
+    gems.push({ group: grp, live: true, phase: Math.random() * 6.28, cell: [0, 0] });
+  }
+}
+
+/* ------------------------------------------------------------------ gate */
+const gate = new THREE.Group();
+const gateRing = new THREE.Mesh(
+  new THREE.TorusGeometry(1.7, 0.22, 6, 18),
+  new THREE.MeshLambertMaterial({ color: 0x3b3358, flatShading: true }),
+);
+gateRing.position.y = 1.9;
+const gateFill = new THREE.Mesh(
+  new THREE.CircleGeometry(1.55, 20),
+  new THREE.MeshBasicMaterial({
+    color: 0x6cff8e, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+  }),
+);
+gateFill.position.y = 1.9;
+const gateGlow = glow(0x6cff8e, 5);
+gateGlow.position.y = 1.9;
+gateGlow.material.opacity = 0.25;
+const gatePad = new THREE.Mesh(
+  new THREE.CylinderGeometry(2, 2.2, 0.16, 16),
+  new THREE.MeshLambertMaterial({ color: 0x2c2645, flatShading: true }),
+);
+gatePad.position.y = 0.08;
+gatePad.receiveShadow = true;
+gate.add(gateRing, gateFill, gateGlow, gatePad);
+scene.add(gate);
+
+/* ------------------------------------------------------------ alien flora */
+const flora = [];
+{
+  const stalkMat = new THREE.MeshLambertMaterial({ color: 0x3f6b58, flatShading: true });
+  for (let i = 0; i < 58; i++) {
+    const grp = new THREE.Group();
+    const h = 0.6 + Math.random() * 1.3;
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.1, h, 5), stalkMat);
+    stalk.position.y = h / 2;
+    const tint = Math.random() < 0.5 ? 0xffb35c : 0x8affd6;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.6),
+      new THREE.MeshLambertMaterial({
+        color: tint, emissive: tint, emissiveIntensity: 0.5, flatShading: true,
+      }));
+    cap.position.y = h;
+    cap.scale.set(1, 0.8, 1);
+    grp.add(stalk, cap);
+    if (i % 3 === 0) grp.add(glow(tint, 1.3).translateY(h));
+    scene.add(grp);
+    flora.push(grp);
+  }
+}
+
+/* ------------------------------------------------------------- projectiles */
+const shots = [];
+{
+  const geo = new THREE.CapsuleGeometry(0.08, 0.5, 3, 6);
+  geo.rotateX(Math.PI / 2);                    // bolts fly along their own +Z
+  const mat = new THREE.MeshBasicMaterial({ color: 0xbfffcf });
+  for (let i = 0; i < 26; i++) {
+    const m = new THREE.Mesh(geo, mat);
+    m.visible = false;
+    const halo = glow(0x6cff8e, 1.1);
+    m.add(halo);
+    scene.add(m);
+    shots.push({ mesh: m, life: 0, vel: new THREE.Vector3() });
+  }
+}
+let shotCursor = 0;
+
+/* --------------------------------------------------------------- particles */
+const shardGeo = new THREE.TetrahedronGeometry(0.22, 0);
+const shards = [];
+for (let i = 0; i < 60; i++) {
+  const m = new THREE.Mesh(shardGeo, new THREE.MeshLambertMaterial({
+    color: 0xffffff, flatShading: true,
+  }));
+  m.visible = false;
+  scene.add(m);
+  shards.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+}
+let shardCursor = 0;
+function burst(at, color, n, spread) {
+  for (let i = 0; i < n; i++) {
+    const s = shards[shardCursor = (shardCursor + 1) % shards.length];
+    s.mesh.position.copy(at);
+    s.mesh.visible = true;
+    s.mesh.material.color.set(color);
+    s.life = 0.5 + Math.random() * 0.4;
+    s.vel.set(Math.random() - 0.5, Math.random() * 0.8, Math.random() - 0.5)
+      .normalize().multiplyScalar(spread * (0.6 + Math.random()));
+    s.spin.set(Math.random() * 8, Math.random() * 8, Math.random() * 8);
+  }
+}
+
+// drifting spores, so the air reads as alien rather than empty
+let spores;
+{
+  const pos = [];
+  for (let i = 0; i < 260; i++) {
+    pos.push((Math.random() - 0.5) * MW * CELL, Math.random() * 6 + 0.4, (Math.random() - 0.5) * MH * CELL);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  spores = new THREE.Points(g, new THREE.PointsMaterial({
+    color: 0xc7b0ff, size: 0.11, transparent: true, opacity: 0.7,
+  }));
+  scene.add(spores);
+}
+
+/* ----------------------------------------------------------------- audio
+   All synthesized: a square-wave pew for the blaster, filtered noise for a
+   hit, bells for the pickups and a rising sweep when the gate powers up. */
+const audio = { ctx: null, master: null, noise: null, muted: false };
+try { audio.muted = localStorage.getItem('rangers-muted') === '1'; } catch (e) { /* ignore */ }
+
+function initAudio() {
+  if (audio.ctx) {
+    if (audio.ctx.state === 'suspended') audio.ctx.resume();
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  audio.ctx = new AC();
+  audio.master = audio.ctx.createGain();
+  audio.master.gain.value = audio.muted ? 0 : 0.65;
+  audio.master.connect(audio.ctx.destination);
+  const n = Math.floor(audio.ctx.sampleRate * 0.5);
+  const buf = audio.ctx.createBuffer(1, n, audio.ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  audio.noise = buf;
+}
+const ready = () => audio.ctx && !audio.muted && audio.noise;
+
+function blaster() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(1250 + Math.random() * 180, t);
+  osc.frequency.exponentialRampToValueAtTime(190, t + 0.14);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.22, t + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 2600;
+  osc.connect(lp).connect(g).connect(audio.master);
+  osc.start(t);
+  osc.stop(t + 0.18);
+}
+
+function alienHit() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 0.8 + Math.random() * 0.4;
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(900, t);
+  bp.frequency.exponentialRampToValueAtTime(220, t + 0.2);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+  src.connect(bp).connect(g).connect(audio.master);
+  src.start(t);
+  src.stop(t + 0.28);
+}
+
+function chime(step, base) {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const f = (base || 720) * Math.pow(2, Math.min(step, 10) / 12);
+  for (let i = 0; i < 2; i++) {
+    const osc = c.createOscillator();
+    osc.type = i ? 'triangle' : 'sine';
+    osc.frequency.setValueAtTime(f * (i ? 2 : 1), t + i * 0.06);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t + i * 0.06);
+    g.gain.exponentialRampToValueAtTime(i ? 0.09 : 0.2, t + i * 0.06 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.06 + 0.4);
+    osc.connect(g).connect(audio.master);
+    osc.start(t + i * 0.06);
+    osc.stop(t + i * 0.06 + 0.42);
+  }
+}
+
+function gemChord() {
+  if (!ready()) return;
+  [0, 4, 7, 12].forEach((s, i) => setTimeout(() => chime(s, 520), i * 70));
+}
+
+function hurt() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(48, t + 0.3);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.42, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+  osc.connect(g).connect(audio.master);
+  osc.start(t);
+  osc.stop(t + 0.36);
+}
+
+function gateHum() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(110, t);
+  osc.frequency.exponentialRampToValueAtTime(740, t + 0.9);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(400, t);
+  lp.frequency.exponentialRampToValueAtTime(3200, t + 0.9);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.2, t + 0.1);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+  osc.connect(lp).connect(g).connect(audio.master);
+  osc.start(t);
+  osc.stop(t + 1.15);
+}
+
+function dryClick() {
+  if (!ready()) return;
+  const c = audio.ctx, t = c.currentTime;
+  const src = c.createBufferSource();
+  src.buffer = audio.noise;
+  src.playbackRate.value = 2.6;
+  const hp = c.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 2400;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.2, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  src.connect(hp).connect(g).connect(audio.master);
+  src.start(t);
+  src.stop(t + 0.07);
+}
+
+function toggleMute() {
+  audio.muted = !audio.muted;
+  if (audio.master) audio.master.gain.value = audio.muted ? 0 : 0.65;
+  const b = $('mute');
+  b.classList.toggle('off', audio.muted);
+  b.setAttribute('aria-pressed', audio.muted ? 'true' : 'false');
+  b.setAttribute('aria-label', audio.muted ? 'Sound off' : 'Sound on');
+  try { localStorage.setItem('rangers-muted', audio.muted ? '1' : '0'); } catch (e) { /* ignore */ }
+}
+
+/* -------------------------------------------------------------- controls */
+const keys = Object.create(null);
+const touch = { fire: 0 };
+const stick = { x: 0, y: 0 };
+
+addEventListener('keydown', (e) => {
+  if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.toLowerCase() === 'r' && state.phase !== 'idle') startRun();
+  if (e.key.toLowerCase() === 'm') toggleMute();
+  if (state.phase === 'idle' && (e.key === ' ' || e.key === 'Enter')) startRun();
+});
+addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => {
+  for (const k in keys) keys[k] = false;
+  touch.fire = 0;
+  stick.x = stick.y = 0;
+});
+
+if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch-mode');
+for (const btn of document.querySelectorAll('.btn')) {
+  const k = btn.dataset.key;
+  const set = (v) => (e) => {
+    e.preventDefault();
+    touch[k] = v;
+    btn.classList.toggle('down', !!v);
+  };
+  btn.addEventListener('pointerdown', set(1));
+  btn.addEventListener('pointerup', set(0));
+  btn.addEventListener('pointercancel', set(0));
+  btn.addEventListener('pointerleave', set(0));
+}
+
+/* left thumb stick, same rig as the other two games */
+{
+  const base = $('stick'), knob = $('knob');
+  let id = null, cx = 0, cy = 0, limit = 32, spring = 0;
+  const place = (dx, dy) => { knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; };
+
+  const move = (e) => {
+    if (id === null || e.pointerId !== id) return;
+    let dx = e.clientX - cx, dy = e.clientY - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > limit) { dx = dx / d * limit; dy = dy / d * limit; }
+    place(dx, dy);
+    stick.x = dx / limit;
+    stick.y = dy / limit;
+  };
+  const release = (e) => {
+    if (id === null || (e && e.pointerId !== id)) return;
+    id = null;
+    stick.x = stick.y = 0;
+    base.classList.remove('active');
+    base.classList.add('springing');
+    place(0, 0);
+    clearTimeout(spring);
+    spring = setTimeout(() => base.classList.remove('springing'), 200);
+  };
+  base.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    id = e.pointerId;
+    const r = base.getBoundingClientRect();
+    cx = r.left + r.width / 2;
+    cy = r.top + r.height / 2;
+    limit = Math.max(18, r.width * 0.34);
+    base.classList.remove('springing');
+    base.classList.add('active');
+    base.setPointerCapture(id);
+    move(e);
+  });
+  base.addEventListener('pointermove', move);
+  base.addEventListener('pointerup', release);
+  base.addEventListener('pointercancel', release);
+  base.addEventListener('lostpointercapture', release);
+}
+
+const DEAD = 0.18;
+function axis(v) {
+  const a = Math.abs(v);
+  if (a < DEAD) return 0;
+  return Math.sign(v) * Math.min(1, (a - DEAD) / (1 - DEAD));
+}
+const pick = (k, s) => (Math.abs(k) >= Math.abs(s) ? k : s);
+
+const input = () => ({
+  walk: pick((keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0),
+             -axis(stick.y)),
+  turn: pick((keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0),
+             axis(stick.x)),
+  fire: !!(keys[' '] || touch.fire),
+});
+
+/* ----------------------------------------------------------------- state */
+const RUN_SECONDS = 240;
+const WALK = 4.9, TURN_RATE = 2.5;
+const SUIT_MAX = 100;
+
+const state = {
+  phase: 'idle',            // idle | running | over
+  t: RUN_SECONDS,
+  score: 0, best: 0, kills: 0, picked: 0, gems: 0,
+  chain: 0, chainTimer: 0, bestChain: 0,
+  heading: 0, speed: 0, walked: 0,
+  suit: SUIT_MAX, charge: 1, fireCd: 0, fireHeld: false, aimT: 0,
+  invuln: 0, flash: 0, shake: 0, toastT: 0, camLift: 0,
+  gateOpen: false, outcome: '',
+};
+try { state.best = Number(localStorage.getItem('rangers-best') || 0) || 0; } catch (e) { /* ignore */ }
+
+const explored = Array.from({ length: MH }, () => new Array(MW).fill(false));
+let distFromStart = null;
+const V = new THREE.Vector3();
+const AIM = new THREE.Vector3();
+const MUZZLE = new THREE.Vector3();
+const camGoal = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+
+function placeInCell(obj, cx, cy, jitter, y) {
+  obj.position.set(
+    cellX(cx) + (Math.random() - 0.5) * jitter,
+    y,
+    cellZ(cy) + (Math.random() - 0.5) * jitter,
+  );
+}
+
+function buildRun() {
+  carveMaze();
+  buildWalls();
+  distFromStart = floodFrom(0, 0);
+
+  for (let y = 0; y < MH; y++) explored[y].fill(false);
+
+  // the gate sits at the cell the landing pad is furthest from
+  let far = [MW - 1, MH - 1], farD = -1;
+  const pool = [];
+  for (let y = 0; y < MH; y++) {
+    for (let x = 0; x < MW; x++) {
+      const d = distFromStart[y][x];
+      if (d > farD) { farD = d; far = [x, y]; }
+      if (d > 2) pool.push([x, y, d]);
+    }
+  }
+  gate.position.set(cellX(far[0]), 0, cellZ(far[1]));
+  sun.shadow.needsUpdate = true;          // new walls, new shadows
+  state.gateCell = far;
+
+  // three gems, well apart from each other and from the pad
+  const gemCells = [];
+  const wanted = pool.filter(([, , d]) => d > farD * 0.35);
+  for (const g of gems) {
+    let best = null, bestScore = -1;
+    for (let tries = 0; tries < 60; tries++) {
+      const [x, y] = wanted.length
+        ? wanted[(Math.random() * wanted.length) | 0]
+        : [(Math.random() * MW) | 0, (Math.random() * MH) | 0];
+      if (x === far[0] && y === far[1]) continue;
+      let near = Math.min(
+        Math.hypot(x, y),
+        ...gemCells.map(([gx, gy]) => Math.hypot(x - gx, y - gy)),
+      );
+      if (near > bestScore) { bestScore = near; best = [x, y]; }
+      if (near > 5) break;
+    }
+    const cellPick = best || [1, 1];
+    gemCells.push(cellPick);
+    g.cell = cellPick;
+    g.live = true;
+    g.group.visible = true;
+    placeInCell(g.group, cellPick[0], cellPick[1], 0, 1.2);
+  }
+
+  for (const c of crystals) {
+    let x = 0, y = 0;
+    do {
+      x = (Math.random() * MW) | 0;
+      y = (Math.random() * MH) | 0;
+    } while (x + y < 2);
+    c.cell = [x, y];
+    c.live = true;
+    c.group.visible = true;
+    placeInCell(c.group, x, y, CELL * 0.33, 0.85);
+  }
+
+  for (const a of aliens) {
+    let x = 0, y = 0;
+    do {
+      x = (Math.random() * MW) | 0;
+      y = (Math.random() * MH) | 0;
+    } while (distFromStart[y][x] < 4);
+    a.group.position.set(cellX(x), 1.2, cellZ(y));
+    a.alive = true;
+    a.hp = 2;
+    a.hurt = 0;
+    a.chase = 0;
+    a.respawn = 0;
+    a.heading = ((Math.random() * 4) | 0) * Math.PI / 2;
+    a.group.visible = true;
+  }
+
+  for (const f of flora) {
+    const x = (Math.random() * MW) | 0, y = (Math.random() * MH) | 0;
+    placeInCell(f, x, y, CELL * 0.36, 0);
+    f.rotation.y = Math.random() * 6.28;
+  }
+
+  ranger.position.set(cellX(0), 0, cellZ(0));
+  state.heading = cells[0][0].e === false ? Math.PI / 2 : 0;   // east is +x
+  ranger.rotation.y = state.heading;
+  state.gateOpen = false;
+  gateFill.material.opacity = 0.12;
+  gateRing.material.color.set(0x3b3358);
+  gateGlow.material.opacity = 0.18;
+  reveal();
+}
+
+function reveal() {
+  const [cx, cy] = cellOf(ranger.position.x, ranger.position.z);
+  explored[cy][cx] = true;
+  const c = cells[cy][cx];
+  if (!c.n && cy > 0) explored[cy - 1][cx] = true;
+  if (!c.s && cy < MH - 1) explored[cy + 1][cx] = true;
+  if (!c.w && cx > 0) explored[cy][cx - 1] = true;
+  if (!c.e && cx < MW - 1) explored[cy][cx + 1] = true;
+}
+
+function toast(text) {
+  $('toast').textContent = text;
+  state.toastT = 2.6;
+}
+
+function startRun() {
+  initAudio();
+  buildRun();
+  state.phase = 'running';
+  state.t = RUN_SECONDS;
+  state.score = 0; state.kills = 0; state.picked = 0; state.gems = 0;
+  state.chain = 0; state.chainTimer = 0; state.bestChain = 0;
+  state.speed = 0; state.walked = 0;
+  state.suit = SUIT_MAX; state.charge = 1; state.fireCd = 0; state.aimT = 0;
+  state.invuln = 0; state.flash = 0; state.shake = 0; state.toastT = 0;
+  state.outcome = '';
+  $('startCard').hidden = true;
+  $('endCard').hidden = true;
+}
+
+function endRun(outcome) {
+  state.phase = 'over';
+  state.outcome = outcome;
+  let detail = '';
+  if (outcome === 'escaped') {
+    const bonus = Math.round(state.t) * 10;
+    state.score += bonus;
+    const m = Math.floor(state.t / 60), s = Math.floor(state.t % 60);
+    detail = 'points · out with ' + m + ':' + String(s).padStart(2, '0')
+      + ' to spare (+' + bonus + ')';
+    $('endTitle').textContent = 'Clear of the maze';
+    $('endEyebrow').textContent = 'Mission log — extraction';
+  } else {
+    detail = 'points · ' + state.picked + ' crystals · ' + state.kills + ' locals';
+    $('endTitle').textContent = outcome === 'air' ? 'Air gone' : 'Suit breached';
+    $('endEyebrow').textContent = 'Mission log — lost contact';
+  }
+  if (state.score > state.best) {
+    state.best = state.score;
+    try { localStorage.setItem('rangers-best', String(state.best)); } catch (e) { /* ignore */ }
+  }
+  $('endScore').textContent = state.score;
+  $('endDetail').textContent = detail;
+  $('endBest').textContent = 'Best run ' + state.best
+    + ' · longest streak ×' + Math.max(1, state.bestChain);
+  $('endCard').hidden = false;
+}
+
+function scoreHit(points, at, color) {
+  state.chainTimer = 3;
+  state.chain = Math.min(5, state.chain + 1);
+  state.bestChain = Math.max(state.bestChain, state.chain);
+  state.score += points * state.chain;
+  if (at) burst(at, color, 7, 3.5);
+}
+
+function damage(amount, from) {
+  if (state.invuln > 0 || state.phase !== 'running') return;
+  state.suit = Math.max(0, state.suit - amount);
+  state.invuln = 0.9;
+  state.chain = 0;
+  state.flash = REDUCED ? 0.35 : 0.85;
+  state.shake = REDUCED ? 0.05 : 0.3;
+  hurt();
+  if (from) burst(from, 0xff5f6d, 5, 3);
+  if (state.suit <= 0) endRun('down');
+}
+
+function fire() {
+  const s = shots[shotCursor = (shotCursor + 1) % shots.length];
+  // the arm only swings up on the next frame, so the bolt leaves from where
+  // the blaster is about to be rather than from a hand still by the hip
+  MUZZLE.copy(ranger.position).addScaledVector(AIM, 0.7).setY(1.35);
+  s.mesh.position.copy(MUZZLE);
+  s.mesh.visible = true;
+  s.vel.copy(AIM).multiplyScalar(34);
+  s.mesh.lookAt(V.copy(s.mesh.position).add(s.vel));
+  s.life = 1.1;
+  state.charge -= 0.14;
+  state.fireCd = 0.2;
+  state.aimT = 0.28;
+  blaster();
+}
+
+/* ------------------------------------------------------------------ step */
+function step(dt, t) {
+  const running = state.phase === 'running';
+  const inp = running ? input() : { walk: 0, turn: 0, fire: false };
+
+  if (running) {
+    state.t -= dt;
+    if (state.t <= 0) { state.t = 0; endRun('air'); }
+  }
+
+  /* --- walk --------------------------------------------------------- */
+  state.heading -= inp.turn * TURN_RATE * dt;
+  const target = inp.walk >= 0 ? inp.walk * WALK : inp.walk * WALK * 0.55;
+  state.speed += (target - state.speed) * Math.min(1, 9 * dt);
+  AIM.set(Math.sin(state.heading), 0, Math.cos(state.heading));
+  ranger.position.addScaledVector(AIM, state.speed * dt);
+  slideOut(ranger.position, 0.52);
+  ranger.rotation.y = state.heading;
+  state.walked += Math.abs(state.speed) * dt;
+  if (running) reveal();
+
+  /* --- blaster ------------------------------------------------------ */
+  state.fireCd = Math.max(0, state.fireCd - dt);
+  state.charge = Math.min(1, state.charge + 0.2 * dt);
+  state.aimT = Math.max(0, state.aimT - dt);
+  if (running && inp.fire && state.fireCd <= 0) {
+    if (state.charge >= 0.14) fire();
+    else if (!state.fireHeld) dryClick();
+  }
+  state.fireHeld = inp.fire;
+
+  state.invuln = Math.max(0, state.invuln - dt);
+  state.flash = Math.max(0, state.flash - dt * 1.4);
+  state.shake = Math.max(0, state.shake - dt * 1.1);
+  state.toastT = Math.max(0, state.toastT - dt);
+  if (state.chainTimer > 0 && (state.chainTimer -= dt) <= 0) state.chain = 0;
+
+  /* --- the ranger's stride ------------------------------------------ */
+  const moving = Math.min(1, Math.abs(state.speed) / WALK);
+  const stride = state.walked * 2.3;
+  const swing = Math.sin(stride) * moving;
+  limbs.legL.rotation.x = swing * 0.6;
+  limbs.legR.rotation.x = -swing * 0.6;
+  limbs.armL.rotation.x = -swing * 0.5;
+  limbs.armR.rotation.x = state.aimT > 0
+    ? THREE.MathUtils.lerp(limbs.armR.rotation.x, -1.45, Math.min(1, 18 * dt))
+    : THREE.MathUtils.lerp(limbs.armR.rotation.x, swing * 0.5, Math.min(1, 10 * dt));
+  limbs.armL.rotation.z = -0.1;
+  limbs.armR.rotation.z = 0.1;
+  body.position.y = Math.abs(Math.sin(stride)) * 0.07 * moving
+    + Math.sin(t * 1.6) * 0.012 * (1 - moving);
+  body.rotation.z = -inp.turn * 0.08 * moving;
+  for (const w of wings) w.group.rotation.y = w.side * (0.12 + 0.62 * moving);
+  for (const g of jetGlows) g.scale.setScalar(0.45 + moving * 0.7 + Math.sin(t * 9) * 0.05);
+  lamp.intensity = 2.4 + (state.invuln > 0 ? Math.sin(t * 40) * 1.0 : 0);
+
+  /* --- shots ---------------------------------------------------------
+     A bolt covers more than a wall's thickness in one frame on a slow
+     device, so it is stepped in short hops and tested at each one rather
+     than once per frame - otherwise shots tunnel through stone and aliens. */
+  for (const s of shots) {
+    if (s.life <= 0) continue;
+    s.life -= dt;
+    let dead = s.life <= 0;
+    const hops = Math.max(1, Math.ceil(s.vel.length() * dt / 0.4));
+    const hopDt = dt / hops;
+    for (let h = 0; h < hops && !dead; h++) {
+      const p = s.mesh.position.addScaledVector(s.vel, hopDt);
+      const [cx, cy] = cellOf(p.x, p.z);
+      const list = cellWalls.get(keyOf(cx, cy));
+      if (list) {
+        for (const b of list) {
+          if (p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1) {
+            burst(p, 0xbfffcf, 3, 2.2);
+            dead = true;
+            break;
+          }
+        }
+      }
+      if (dead) break;
+      for (const a of aliens) {
+        if (!a.alive || a.group.position.distanceTo(p) > 0.95) continue;
+        a.hp--;
+        a.hurt = 0.18;
+        alienHit();
+        burst(p, a.tint, 5, 3);
+        if (a.hp <= 0) {
+          a.alive = false;
+          a.group.visible = false;
+          a.respawn = 9 + Math.random() * 7;
+          state.kills++;
+          scoreHit(80, a.group.position, a.tint);
+        }
+        dead = true;
+        break;
+      }
+    }
+    if (dead) { s.life = 0; s.mesh.visible = false; }
+  }
+
+  /* --- aliens ------------------------------------------------------- */
+  for (const a of aliens) {
+    if (!a.alive) {
+      if ((a.respawn -= dt) <= 0) {
+        let x = 0, y = 0;
+        do {
+          x = (Math.random() * MW) | 0;
+          y = (Math.random() * MH) | 0;
+        } while (V.set(cellX(x), 1.2, cellZ(y)).distanceTo(ranger.position) < 18);
+        a.group.position.copy(V);
+        a.alive = true; a.hp = 2; a.hurt = 0; a.chase = 0;
+        a.group.visible = true;
+      }
+      continue;
+    }
+    const p = a.group.position;
+    const toX = ranger.position.x - p.x, toZ = ranger.position.z - p.z;
+    const far = Math.hypot(toX, toZ);
+    if (running && far < 24 && seesThrough(p.x, p.z, ranger.position.x, ranger.position.z)) {
+      a.chase = 1.8;
+      a.heading = Math.atan2(toX, toZ);
+    }
+    a.chase = Math.max(0, a.chase - dt);
+    // they crowd the ranger but hold a pace off him, so the chase stays visible
+    const closing = a.chase > 0 && far < 1.5 ? 0 : 1;
+    const sp = a.speed * (a.chase > 0 ? 1.25 : 0.7) * closing;
+    p.x += Math.sin(a.heading) * sp * dt;
+    p.z += Math.cos(a.heading) * sp * dt;
+    if (slideOut(p, 0.6) && a.chase <= 0) {
+      // bounced off a wall while wandering: take another corridor
+      a.heading = ((Math.random() * 4) | 0) * Math.PI / 2;
+    }
+    p.y = 1.15 + Math.sin(t * 2 + a.phase) * 0.2;
+    a.group.rotation.y += (a.heading - a.group.rotation.y) * Math.min(1, 6 * dt);
+    a.hurt = Math.max(0, a.hurt - dt);
+    a.group.userData.skin.emissiveIntensity = a.hurt > 0 ? 1.4 : 0.18;
+    for (const tn of a.group.userData.tendrils) {
+      tn.root.rotation.x = Math.sin(t * 3 + tn.phase) * 0.3;
+      tn.root.rotation.z = Math.cos(t * 2.6 + tn.phase) * 0.3;
+    }
+    if (running && far < 1.3) damage(14, p);
+  }
+
+  /* --- pickups and the gate ----------------------------------------- */
+  for (const c of crystals) {
+    if (!c.live) continue;
+    c.group.rotation.y += 1.6 * dt;
+    c.group.position.y = 0.85 + Math.sin(t * 2 + c.phase) * 0.12;
+    if (running && c.group.position.distanceTo(ranger.position) < 1.25) {
+      c.live = false;
+      c.group.visible = false;
+      state.picked++;
+      scoreHit(20, c.group.position, 0x6be8ff);
+      chime(state.chain * 2);
+    }
+  }
+  for (const g of gems) {
+    if (!g.live) continue;
+    g.group.rotation.y += 0.9 * dt;
+    g.group.userData.cage.rotation.x += 1.4 * dt;
+    g.group.userData.cage.rotation.y += 0.7 * dt;
+    g.group.position.y = 1.2 + Math.sin(t * 1.5 + g.phase) * 0.16;
+    if (running && g.group.position.distanceTo(ranger.position) < 1.6) {
+      g.live = false;
+      g.group.visible = false;
+      state.gems++;
+      scoreHit(150, g.group.position, 0xc78bff);
+      gemChord();
+      if (state.gems >= 3) {
+        state.gateOpen = true;
+        gateFill.material.opacity = 0.5;
+        gateRing.material.color.set(0x6cff8e);
+        gateGlow.material.opacity = 0.5;
+        gateHum();
+        toast('Gate powered — marked on the map');
+      } else {
+        toast(state.gems + ' of 3 gems');
+      }
+    }
+  }
+  gateRing.rotation.z += (state.gateOpen ? 1.1 : 0.25) * dt;
+  gateFill.material.opacity = state.gateOpen
+    ? 0.42 + Math.sin(t * 3) * 0.1
+    : 0.1 + Math.sin(t * 1.4) * 0.03;
+  if (running && state.gateOpen
+      && V.copy(gate.position).setY(ranger.position.y).distanceTo(ranger.position) < 2.2) {
+    burst(ranger.position, 0x6cff8e, 12, 5);
+    endRun('escaped');
+  }
+
+  /* --- particles ----------------------------------------------------- */
+  for (const s of shards) {
+    if (s.life <= 0) continue;
+    s.life -= dt;
+    s.vel.y -= 7 * dt;
+    s.mesh.position.addScaledVector(s.vel, dt);
+    if (s.mesh.position.y < 0.1) { s.mesh.position.y = 0.1; s.vel.set(0, 0, 0); }
+    s.mesh.rotation.x += s.spin.x * dt;
+    s.mesh.rotation.y += s.spin.y * dt;
+    s.mesh.scale.setScalar(Math.max(0.05, Math.min(1, s.life * 1.6)));
+    if (s.life <= 0) s.mesh.visible = false;
+  }
+  spores.rotation.y += 0.01 * dt;
+  spores.position.y = Math.sin(t * 0.3) * 0.4;
+
+  /* --- camera -------------------------------------------------------- */
+  const backX = -Math.sin(state.heading), backZ = -Math.cos(state.heading);
+  // The corridor behind is often a wall, so the rig pulls in and lifts a
+  // little rather than burying itself in stone. Base range is under one cell
+  // so a straight corridor keeps the full shot.
+  const clear = freeDistance(ranger.position.x, ranger.position.z, backX, backZ, 5.4);
+  const back = Math.max(2.6, clear);
+  const tight = 1 - back / 5.4;
+  state.camLift += (tight - state.camLift) * Math.min(1, 6 * dt);
+  camGoal.set(
+    ranger.position.x + backX * back,
+    2.85 + state.camLift * 1.3,
+    ranger.position.z + backZ * back,
+  );
+  const k = 1 - Math.exp(-11 * dt);
+  camera.position.lerp(camGoal, k);
+  camera.position.x += (Math.random() - 0.5) * state.shake;
+  camera.position.y += (Math.random() - 0.5) * state.shake;
+  camLook.lerp(V.copy(ranger.position)
+    .addScaledVector(AIM, 3.4 - state.camLift * 1.2)
+    .setY(THREE.MathUtils.lerp(1.45, 1.15, state.camLift)), k);
+  camera.lookAt(camLook);
+
+  sun.position.copy(ranger.position).add(V.set(-60, 90, -40));
+  sun.target.position.copy(ranger.position);
+  sun.target.updateMatrixWorld();
+
+  $('flash').style.opacity = state.flash.toFixed(3);
+  $('toast').classList.toggle('on', state.toastT > 0);
+}
+
+/* ------------------------------------------------------------------- HUD */
+const mapCanvas = $('map');
+const mapCtx = mapCanvas.getContext('2d');
+const MS = mapCanvas.width / MW;          // pixels per maze cell
+
+function drawMap() {
+  const g = mapCtx;
+  g.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+  g.fillStyle = 'rgba(8, 6, 20, 0.9)';
+  g.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+
+  g.lineWidth = 1;
+  for (let y = 0; y < MH; y++) {
+    for (let x = 0; x < MW; x++) {
+      if (!explored[y][x]) continue;
+      const px = x * MS, py = y * MS;
+      g.fillStyle = 'rgba(118, 150, 235, 0.16)';
+      g.fillRect(px, py, MS, MS);
+      const c = cells[y][x];
+      g.strokeStyle = 'rgba(190, 205, 255, 0.5)';
+      g.beginPath();
+      if (c.n) { g.moveTo(px, py); g.lineTo(px + MS, py); }
+      if (c.s) { g.moveTo(px, py + MS); g.lineTo(px + MS, py + MS); }
+      if (c.w) { g.moveTo(px, py); g.lineTo(px, py + MS); }
+      if (c.e) { g.moveTo(px + MS, py); g.lineTo(px + MS, py + MS); }
+      g.stroke();
+    }
+  }
+
+  const dot = (wx, wz, color, r) => {
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc((wx + HALF_W) / CELL * MS, (wz + HALF_H) / CELL * MS, r, 0, 6.3);
+    g.fill();
+  };
+
+  for (const gm of gems) {
+    if (!gm.live) continue;
+    const [gx, gy] = gm.cell;
+    if (explored[gy][gx]) dot(gm.group.position.x, gm.group.position.z, '#c78bff', 2.6);
+  }
+  for (const c of crystals) {
+    if (!c.live) continue;
+    const [cx, cy] = c.cell;
+    if (explored[cy][cx]) dot(c.group.position.x, c.group.position.z, 'rgba(107,232,255,0.8)', 1.4);
+  }
+  // the locals only show up on the suit's short-range sensor
+  for (const a of aliens) {
+    if (!a.alive || a.group.position.distanceTo(ranger.position) > 18) continue;
+    dot(a.group.position.x, a.group.position.z, '#ff5f6d', 2);
+  }
+  if (state.gateOpen || explored[state.gateCell[1]][state.gateCell[0]]) {
+    const gx = (gate.position.x + HALF_W) / CELL * MS;
+    const gy = (gate.position.z + HALF_H) / CELL * MS;
+    g.strokeStyle = state.gateOpen ? '#6cff8e' : 'rgba(108,255,142,0.45)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(gx, gy, 4, 0, 6.3);
+    g.stroke();
+    g.lineWidth = 1;
+  }
+
+  // the ranger, pointing where he faces
+  const px = (ranger.position.x + HALF_W) / CELL * MS;
+  const py = (ranger.position.z + HALF_H) / CELL * MS;
+  const fx = Math.sin(state.heading), fy = Math.cos(state.heading);
+  g.fillStyle = '#eef2fb';
+  g.beginPath();
+  g.moveTo(px + fx * 5, py + fy * 5);
+  g.lineTo(px - fy * 3.2 - fx * 2.6, py + fx * 3.2 - fy * 2.6);
+  g.lineTo(px + fy * 3.2 - fx * 2.6, py - fx * 3.2 - fy * 2.6);
+  g.closePath();
+  g.fill();
+}
+
+function hud(tick) {
+  const m = Math.floor(state.t / 60), s = Math.floor(state.t % 60);
+  const clockEl = $('clock');
+  clockEl.textContent = m + ':' + String(s).padStart(2, '0');
+  clockEl.classList.toggle('warn', state.t <= 30);
+  $('score').textContent = state.score;
+  const pct = Math.round(state.suit);
+  $('suitPct').textContent = pct + '%';
+  $('suitFill').style.width = pct + '%';
+  $('suitBar').classList.toggle('hurt', pct <= 35);
+  $('gemLine').textContent = state.gems + ' / 3';
+  $('chargePct').textContent = Math.round(state.charge * 100) + '%';
+  $('cellFill').style.width = (state.charge * 100).toFixed(0) + '%';
+  $('cellBar').classList.toggle('low', state.charge < 0.2);
+  const c = $('combo');
+  c.classList.toggle('on', state.chain > 1);
+  c.textContent = '×' + state.chain + ' streak';
+  const label = $('mapLabel');
+  label.textContent = state.gateOpen ? 'Gate powered' : 'Sector map';
+  label.classList.toggle('found', state.gateOpen);
+  if (tick % 4 === 0) drawMap();          // the map does not need 60fps
+}
+
+/* ------------------------------------------------------------------ loop */
+const clock = new THREE.Clock();
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => {
+  requestAnimationFrame(resize);
+  setTimeout(resize, 250);
+});
+visualViewport?.addEventListener('resize', resize);
+resize();
+
+let tick = 0;
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  step(dt, clock.elapsedTime);
+  hud(tick);
+  if (tick % 3 === 0) sun.shadow.needsUpdate = true;
+  tick++;
+  renderer.render(scene, camera);
+}
+
+/* ------------------------------------------------------------------ boot */
+$('startBtn').addEventListener('click', () => { initAudio(); startRun(); });
+$('againBtn').addEventListener('click', () => { initAudio(); startRun(); });
+$('mute').addEventListener('click', () => { initAudio(); toggleMute(); });
+if (audio.muted) {
+  $('mute').classList.add('off');
+  $('mute').setAttribute('aria-pressed', 'true');
+  $('mute').setAttribute('aria-label', 'Sound off');
+}
+if (state.best > 0) {
+  $('bestLine').textContent = 'Best run so far: ' + state.best
+    + '. Three gems open the gate.';
+}
+
+buildRun();                 // a maze is already standing behind the title card
+$('loading').hidden = true;
+frame();
+</script>
+
+</body>
+</html>

@@ -13,6 +13,7 @@ Three games live here, all static pages under `web/`:
 
 - **Grand Master Hedgehog** — <https://anight.github.io/GrandMasterHedgehog/>
 - **Iron Fathom** (robot shark) — <https://anight.github.io/GrandMasterHedgehog/shark/>
+- **Iron Fathom VR** (the same reef in a headset) — <https://anight.github.io/GrandMasterHedgehog/shark-vr/>
 - **Space Rangers** (alien maze) — <https://anight.github.io/GrandMasterHedgehog/rangers/>
 
 All three share the same controls: an analog thumb stick under the left thumb
@@ -69,6 +70,33 @@ harder, so the turn and the throttle come off one thumb.
 
 Nothing is loaded but three.js: the shark, the reef, the creatures and every
 sound are built in the page.
+
+### In a headset
+
+`web/shark-vr/` is a separate copy of the game with WebXR added, so the flat
+page is left exactly as it is. Open it in the Meta Quest browser and a **VR**
+button appears next to the sound button: hit it and the reef goes stereo. On a
+desktop or a phone the same page plays flat, unchanged.
+
+- The chase shot becomes a rig. The camera is parented to a group, the group
+  takes the pose the chase camera used to take, and the headset drives the
+  camera inside it — the standard dolly pattern, and the only way a moving
+  camera and a head pose can coexist.
+- Comfort, which is most of the work: the horizon stays level, the roll is
+  dropped, only a third of the dive angle is passed through, and everything
+  swims at 72% of flat speed. Vection at 30 m/s is unkind.
+- The HUD cannot be DOM any more — the compositor never shows it — so it is
+  drawn to a canvas and hung on a panel under the view. The sting flash
+  becomes a sphere around the seat rather than a screen overlay.
+- Left thumb stick swims, either trigger strikes (and starts a dive, since
+  the start card is a DOM element a headset cannot show), **A** restarts,
+  **B** mutes. Both triggers buzz on a strike and on a sting.
+- For a standalone GPU: thicker fog, half the light shafts, a 512px shadow
+  map, foveation on, a 0.85 framebuffer scale, and reef scenery past 95 m is
+  hidden — the fog hides the cull line.
+
+It is a seated experience (`local` reference space), so the view starts where
+your head is rather than floating above the floor.
 
 ### How the tail works
 
@@ -167,6 +195,7 @@ spins true with no wobble. In `web/index.html`:
     web/          the playable games (three.js, static)
       index.html      Grand Master Hedgehog
       shark/          Iron Fathom, the robot shark (all geometry built in JS)
+      shark-vr/       the same game with WebXR, for the Quest browser
       rangers/        Space Rangers, the alien maze (maze cut at run time)
     mesh/         hedgehog.obj + .mtl — 4,441 verts, 7,692 tris, 18 materials
     renders/      stills from the Python renderer

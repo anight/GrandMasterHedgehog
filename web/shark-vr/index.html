@@ -2070,11 +2070,11 @@ const vrCtx = vrCanvas.getContext('2d');
 const vrTex = new THREE.CanvasTexture(vrCanvas);
 vrTex.colorSpace = THREE.SRGBColorSpace;
 const vrHud = new THREE.Mesh(
-  new THREE.PlaneGeometry(2.3, 0.9),
+  new THREE.PlaneGeometry(2.0, 0.78),
   new THREE.MeshBasicMaterial({ map: vrTex, transparent: true, depthWrite: false, fog: false }),
 );
-vrHud.position.set(0, -0.86, -2.1);
-vrHud.rotation.x = -0.38;          // tipped up towards the face
+vrHud.position.set(0, -1.45, -1.95);
+vrHud.rotation.x = -0.62;          // well below the shark, tipped up to read
 vrHud.renderOrder = 10;
 vrHud.visible = false;
 rig.add(vrHud);
